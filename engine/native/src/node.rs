@@ -804,6 +804,21 @@ pub struct NodeService {
 }
 
 impl NodeService {
+    pub async fn start_default(
+        data_dir: &Path,
+        discoverability: Discoverability,
+        app_handle: AppHandle,
+    ) -> anyhow::Result<Self> {
+        Self::start(
+            data_dir,
+            RelayMode::Default,
+            DiscoveryModeOption::Default,
+            discoverability,
+            app_handle,
+        )
+        .await
+    }
+
     /// `discoverability` is applied before discovery starts, so a device set
     /// to `Off` never registers the mDNS publisher — not even briefly.
     pub async fn start(
@@ -1059,6 +1074,15 @@ impl NodeService {
         let info = self.identity.set_display_name(display_name)?;
 
         Ok(info)
+    }
+
+    pub fn set_public_profile(
+        &self,
+        display_name: Option<&str>,
+        device_type: Option<&str>,
+    ) -> anyhow::Result<DeviceInfo> {
+        self.identity
+            .set_public_profile(display_name, device_type)
     }
 
     pub fn rename_paired(

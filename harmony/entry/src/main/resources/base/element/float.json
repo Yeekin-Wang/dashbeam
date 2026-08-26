@@ -1,0 +1,32 @@
+{
+  "float": [
+    {
+      "name": "page_text_font_size",
+      "value": "50fp"
+    },
+    {
+      "name": "title_xl",
+      "value": "28fp"
+    },
+    {
+      "name": "title_l",
+      "value": "22fp"
+    },
+    {
+      "name": "body_m",
+      "value": "16fp"
+    },
+    {
+      "name": "body_s",
+      "value": "13fp"
+    },
+    {
+      "name": "caption",
+      "value": "11fp"
+    },
+    {
+      "name": "radius_s",
+      "value": "8vp"
+    }
+  ]
+}

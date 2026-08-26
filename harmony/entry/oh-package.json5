@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "",
+  "types": "src/main/cpp/types/libdashbeam_engine/index.d.ts",
+  "author": "",
+  "license": "",
+  "dependencies": {}
+}
+

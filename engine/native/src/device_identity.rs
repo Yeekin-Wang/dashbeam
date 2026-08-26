@@ -48,13 +48,39 @@ impl DeviceIdentity {
     }
 
     pub fn set_display_name(&self, name: &str) -> anyhow::Result<DeviceInfo> {
-        let normalized = normalize_display_name(name).map_err(anyhow::Error::msg)?;
+        self.set_public_profile(Some(name), None)
+    }
+
+    pub fn set_public_profile(
+        &self,
+        display_name: Option<&str>,
+        device_type: Option<&str>,
+    ) -> anyhow::Result<DeviceInfo> {
+        let normalized_name = display_name
+            .map(normalize_display_name)
+            .transpose()
+            .map_err(anyhow::Error::msg)?;
+        let normalized_device_type = device_type
+            .map(str::trim)
+            .map(|value| {
+                anyhow::ensure!(!value.is_empty(), "device type must not be empty");
+                Ok(value.to_string())
+            })
+            .transpose()?;
+
         {
             let mut meta = self.meta.write().expect("device meta lock");
-            meta.display_name = normalized;
-            meta.name_is_custom = true;
-            meta.migrate();
-            Self::write_meta(&self.meta_path, &meta)?;
+            let mut updated = meta.clone();
+            if let Some(display_name) = normalized_name {
+                updated.display_name = display_name;
+                updated.name_is_custom = true;
+            }
+            if let Some(device_type) = normalized_device_type {
+                updated.device_type = device_type;
+            }
+            updated.migrate();
+            Self::write_meta(&self.meta_path, &updated)?;
+            *meta = updated;
         }
         Ok(DeviceInfo::from(self))
     }
@@ -277,9 +303,16 @@ pub fn load_or_create_identity(data_dir: &Path) -> anyhow::Result<DeviceIdentity
         if meta.os.trim().is_empty() {
             meta.os = detect_os();
         }
-        // Re-detect form factor on load (not user-editable yet) so older
-        // Linux/Windows installs that were hard-coded as "desktop" self-heal.
-        meta.device_type = default_device_type();
+        // Desktop form factors remain auto-detected on every load. HarmonyOS
+        // receives its form factor from the platform bridge, so preserve the
+        // persisted value once that bridge has supplied one.
+        if cfg!(target_os = "ohos") {
+            if meta.device_type.trim().is_empty() {
+                meta.device_type = default_device_type();
+            }
+        } else {
+            meta.device_type = default_device_type();
+        }
         meta
     } else {
         DeviceMetaFile::new(endpoint_id, default_display_name(), default_device_type())

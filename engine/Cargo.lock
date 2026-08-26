@@ -708,6 +708,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashbeam-ohos-bridge"
+version = "0.1.0"
+dependencies = [
+ "sendme-native",
+ "sendme-protocol",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

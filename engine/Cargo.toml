@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "protocol", "native", "wasm-io"]
+members = [".", "protocol", "native", "wasm-io", "ohos-bridge"]
 resolver = "2"
 
 [package]

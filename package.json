@@ -12,6 +12,7 @@
 		"build:web:vercel": "WEB_BASE=/ pnpm build:wasm && pnpm check:wasm && tsc -b && WEB_BASE=/ vite build --config vite.config.ts --mode web",
 		"deploy:web:vercel": "./scripts/deploy-web-vercel.sh",
 		"build:wasm": "node ./scripts/build-wasm-bridge.js --release",
+		"build:ohos-engine": "node ./scripts/build-ohos-engine.js",
 		"check:wasm": "tsc -p tsconfig.wasm-parity.json",
 		"preview": "vite preview --config vite.config.ts",
 		"preview:web": "vite preview --config vite.config.ts --mode web",

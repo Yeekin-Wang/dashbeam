@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "DashBeam HarmonyOS entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "DashBeam HarmonyOS application shell"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "DashBeam"
+    },
+    {
+      "name": "workbench_tagline",
+      "value": "安静、清晰的本地传输工作台"
+    },
+    {
+      "name": "ticket_placeholder",
+      "value": "在此粘贴 DashBeam 票据"
+    }
+  ]
+}

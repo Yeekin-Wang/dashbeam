@@ -1,0 +1,4 @@
+{
+  "name": "libdashbeam_engine.so",
+  "types": "./index.d.ts"
+}
