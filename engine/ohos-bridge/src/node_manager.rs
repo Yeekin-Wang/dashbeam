@@ -235,20 +235,25 @@ async fn run_start(request: ValidatedNodeStart, callback: CallbackSlot) {
         session_id.clone(),
     )));
 
-    let service =
-        match NodeService::start_default(&request.data_dir, request.discoverability, app_handle)
-            .await
-        {
-            Ok(service) => Arc::new(service),
-            Err(error) => {
-                finish_start_failure(
-                    &session_id,
-                    callback,
-                    BridgeError::new("node_start_failed", error.to_string()),
-                );
-                return;
-            }
-        };
+    let service = match NodeService::start(
+        &request.data_dir,
+        request.relay_mode.into(),
+        request.discovery_mode,
+        request.discoverability,
+        app_handle,
+    )
+    .await
+    {
+        Ok(service) => Arc::new(service),
+        Err(error) => {
+            finish_start_failure(
+                &session_id,
+                callback,
+                BridgeError::new("node_start_failed", error.to_string()),
+            );
+            return;
+        }
+    };
 
     if let Err(profile_error) = service.set_public_profile(
         request.display_name.as_deref(),

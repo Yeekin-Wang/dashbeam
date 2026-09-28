@@ -68,9 +68,6 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
-      systemIntegrationService.requestNotificationAuthorization().catch((error: Error): void => {
-        hilog.error(DOMAIN, 'testTag', 'Failed to request notification authorization. Cause: %{public}s', error.message);
-      });
     });
   }
 

@@ -59,19 +59,32 @@ interface NativeShareMetadata {
   items: Array<NativeShareMetadataItem>
 }
 
-interface NativeShareRequest {
+interface NativeDiscoveryConfig {
+  mode: string
+  pkarr_relay_url: string
+  dns_origin?: string
+}
+
+interface NativeNetworkConfig {
+  relayMode: string
+  relayUrls?: Array<string>
+  discoveryMode?: NativeDiscoveryConfig
+}
+
+interface NativeShareRequest extends NativeNetworkConfig {
   sessionId: string
   paths: Array<string>
   metadata: NativeShareMetadata
+  ticketType: string
 }
 
-interface NativeReceiveRequest {
+interface NativeReceiveRequest extends NativeNetworkConfig {
   sessionId: string
   ticket: string
   outputDir: string
 }
 
-interface NativeMetadataRequest {
+interface NativeMetadataRequest extends NativeNetworkConfig {
   sessionId: string
   ticket: string
 }
@@ -159,7 +172,7 @@ interface NativeNodeDeviceInfo {
   os: string
 }
 
-interface NativeNodeStartRequest {
+interface NativeNodeStartRequest extends NativeNetworkConfig {
   sessionId: string
   dataDir: string
   displayName: string
@@ -316,6 +329,27 @@ export class EngineService {
   private deviceRefreshInFlight: boolean = false
   private deviceRefreshPending: boolean = false
 
+  private networkConfig(settings: AppSettings): NativeNetworkConfig {
+    let relayUrl: string = settings.defaultRelay.trim()
+    let discoveryUrl: string = settings.defaultDiscovery.trim()
+    let dnsOrigin: string = settings.dnsOrigin.trim()
+    if (dnsOrigin.length > 0 && discoveryUrl.length === 0) {
+      throw new Error('DNS Origin 需要同时填写自定义 Discovery URL。')
+    }
+    let config: NativeNetworkConfig = { relayMode: relayUrl.length > 0 ? 'custom' : 'default' }
+    if (relayUrl.length > 0) {
+      config.relayUrls = [relayUrl]
+    }
+    if (discoveryUrl.length > 0) {
+      let discovery: NativeDiscoveryConfig = { mode: 'custom', pkarr_relay_url: discoveryUrl }
+      if (dnsOrigin.length > 0) {
+        discovery.dns_origin = dnsOrigin
+      }
+      config.discoveryMode = discovery
+    }
+    return config
+  }
+
   getAvailability(): EngineSnapshot {
     let snapshot: EngineSnapshot = new EngineSnapshot()
     let bridge: NativeBridgeStatus = nativeBridge.getStatus()
@@ -379,12 +413,16 @@ export class EngineService {
       this.nodeSnapshot.status = 'starting'
       this.nodeSnapshot.message = '正在启动 Iroh 设备节点。'
       this.notifyNodeChanged()
+      let network: NativeNetworkConfig = this.networkConfig(settings)
       let request: NativeNodeStartRequest = {
         sessionId: sessionId,
         dataDir: platformService.prepareNodeDataDirectory(),
         displayName: settings.deviceName,
         deviceType: platformService.getNodeDeviceType(),
-        discoverability: settings.discoverable ? 'everyone' : 'off'
+        discoverability: settings.discoverable ? 'everyone' : 'off',
+        relayMode: network.relayMode,
+        relayUrls: network.relayUrls,
+        discoveryMode: network.discoveryMode
       }
       let response: NativeStartResponse = JSON.parse(
         nativeBridge.startNode(JSON.stringify(request), (eventJson: string): void => {
@@ -487,10 +525,15 @@ export class EngineService {
       runtime.progress.speedLabel = '0 B/s'
       onProgress(runtime.progress)
 
+      let network: NativeNetworkConfig = this.networkConfig(await platformService.loadSettings())
       let request: NativeShareRequest = {
         sessionId: sessionId,
         paths: stagedPaths,
-        metadata: this.toNativeMetadata(metadata)
+        metadata: this.toNativeMetadata(metadata),
+        ticketType: 'relayAndAddresses',
+        relayMode: network.relayMode,
+        relayUrls: network.relayUrls,
+        discoveryMode: network.discoveryMode
       }
       let responseJson: string = nativeBridge.startShare(JSON.stringify(request), (eventJson: string): void => {
         this.processShareEvent(eventJson, sessionId, stagedDirectory, metadata, runtime, onProgress)
@@ -533,10 +576,14 @@ export class EngineService {
     try {
       outputDirectory = platformService.prepareReceiveOutput(sessionId)
       this.transferDirectories.set(sessionId, outputDirectory)
+      let network: NativeNetworkConfig = this.networkConfig(await platformService.loadSettings())
       let request: NativeReceiveRequest = {
         sessionId: sessionId,
         ticket: ticket,
-        outputDir: outputDirectory
+        outputDir: outputDirectory,
+        relayMode: network.relayMode,
+        relayUrls: network.relayUrls,
+        discoveryMode: network.discoveryMode
       }
       let responseJson: string = nativeBridge.startReceive(JSON.stringify(request), (eventJson: string): void => {
         this.processReceiveEvent(eventJson, sessionId, outputDirectory, targetUri, runtime, onProgress)
@@ -566,9 +613,13 @@ export class EngineService {
     }
     let sessionId: string = this.createSessionId('metadata')
     try {
+      let network: NativeNetworkConfig = this.networkConfig(await platformService.loadSettings())
       let request: NativeMetadataRequest = {
         sessionId: sessionId,
-        ticket: ticket.trim()
+        ticket: ticket.trim(),
+        relayMode: network.relayMode,
+        relayUrls: network.relayUrls,
+        discoveryMode: network.discoveryMode
       }
       let responseJson: string = nativeBridge.fetchMetadata(JSON.stringify(request), (eventJson: string): void => {
         this.processMetadataEvent(eventJson, sessionId, onResult)

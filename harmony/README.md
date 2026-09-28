@@ -37,6 +37,12 @@ devecocli run --device "<device-name>" --module entry --skip-build
 
 HarmonyOS API 24 模拟器允许安装该开发 HAP，但这不代表真机分发、App Linking 域名校验或应用市场签名已通过。
 
+## 网络与通知
+
+设置页可填写自定义 Relay URL 和 Discovery URL（HTTPS，或仅本机回环 HTTP）；DNS Origin 需要配合自定义 Discovery URL 使用。留空时沿用默认公开服务。更改网络配置后重启应用，设备节点才会采用新设置；发送、接收和元数据解析会读取当前已保存的设置。
+
+通知权限不会在首次启动时弹出。需要后台配对和传输邀请提醒时，可在设置页主动点击「开启通知」；拒绝后也可再次申请。通知未授权不影响前台文件选择与传输操作。
+
 ## App Linking 发布条件
 
 客户端已经声明独立 browsable skill，包含 HTTPS host、`/receive` 路径和 `domainVerify: true`。正式验证仍需要：

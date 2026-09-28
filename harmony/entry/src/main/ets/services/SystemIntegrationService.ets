@@ -43,7 +43,7 @@ export class SystemIntegrationService {
   private requestSequence: number = 0
   private inboundNotificationSequence: number = 0
   private inboundNotificationIds: Set<number> = new Set<number>()
-  private notificationAuthorizationRequested: boolean = false
+  private notificationAuthorizationInFlight: boolean = false
   private foreground: boolean = true
 
   private readonly continuousTaskCancelListener =
@@ -98,21 +98,27 @@ export class SystemIntegrationService {
     return this.foreground
   }
 
+  async isNotificationEnabled(): Promise<boolean> {
+    return notificationManager.isNotificationEnabled()
+  }
+
   async requestNotificationAuthorization(): Promise<void> {
-    if (this.notificationAuthorizationRequested) {
+    if (this.notificationAuthorizationInFlight) {
       return
     }
     let context = platformContext.getUIContext()
     if (context === null) {
       return
     }
-    this.notificationAuthorizationRequested = true
+    this.notificationAuthorizationInFlight = true
     try {
       if (!await notificationManager.isNotificationEnabled()) {
         await notificationManager.requestEnableNotification(context)
       }
     } catch (error) {
       this.logError('Notification authorization failed', error as Error)
+    } finally {
+      this.notificationAuthorizationInFlight = false
     }
   }
 

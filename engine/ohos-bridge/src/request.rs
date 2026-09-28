@@ -1,7 +1,8 @@
 use crate::error::BridgeError;
 use protocol::{
-    normalize_display_name, AddrInfoOptions, Discoverability, DiscoveryModeOption, FileMetadata,
-    ReceiveOptions, RelayModeOption, SendOptions,
+    build_discovery_mode, build_relay_mode, normalize_display_name, AddrInfoOptions,
+    Discoverability, DiscoveryConfigArg, DiscoveryModeOption, FileMetadata, ReceiveOptions,
+    RelayConfigArg, RelayModeOption, SendOptions,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -17,6 +18,14 @@ pub struct NodeStartRequest {
     #[serde(default)]
     pub device_type: Option<String>,
     pub discoverability: String,
+    #[serde(default)]
+    pub relay_mode: Option<String>,
+    #[serde(default)]
+    pub relay_urls: Option<Vec<String>>,
+    #[serde(default)]
+    pub relay_auth_token: Option<String>,
+    #[serde(default)]
+    pub discovery_mode: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -26,6 +35,8 @@ pub struct ValidatedNodeStart {
     pub display_name: Option<String>,
     pub device_type: Option<String>,
     pub discoverability: Discoverability,
+    pub relay_mode: RelayModeOption,
+    pub discovery_mode: DiscoveryModeOption,
 }
 
 #[derive(Debug, Deserialize)]
@@ -195,17 +206,41 @@ pub fn parse_request<T: for<'de> Deserialize<'de>>(json: &str) -> Result<T, Brid
         .map_err(|e| BridgeError::invalid_request(format!("invalid JSON request: {e}")))
 }
 
-fn parse_relay_mode(value: Option<&str>) -> Result<RelayModeOption, BridgeError> {
-    match value.unwrap_or("default") {
-        "default" => Ok(RelayModeOption::Default),
-        "disabled" => Ok(RelayModeOption::Disabled),
-        "custom" => Err(BridgeError::unsupported(
-            "custom relay mode is not supported yet",
-        )),
-        other => Err(BridgeError::invalid_request(format!(
-            "invalid relayMode: {other}"
-        ))),
+fn parse_network_modes(
+    relay_mode: Option<&str>,
+    relay_urls: Option<Vec<String>>,
+    relay_auth_token: Option<String>,
+    discovery_mode: Option<Value>,
+) -> Result<(RelayModeOption, DiscoveryModeOption), BridgeError> {
+    let mode = relay_mode.unwrap_or("default");
+    if mode != "custom"
+        && (relay_urls.as_ref().is_some_and(|urls| !urls.is_empty())
+            || relay_auth_token
+                .as_ref()
+                .is_some_and(|token| !token.is_empty()))
+    {
+        return Err(BridgeError::invalid_request(
+            "custom relay fields require relayMode custom",
+        ));
     }
+    let relay = build_relay_mode(Some(RelayConfigArg {
+        mode: mode.to_string(),
+        urls: relay_urls.unwrap_or_default(),
+        auth_token: relay_auth_token,
+        fallback: None,
+    }))
+    .map_err(BridgeError::invalid_request)?;
+    let discovery = match discovery_mode {
+        None | Some(Value::Null) => DiscoveryModeOption::Default,
+        Some(Value::String(mode)) if mode == "default" => DiscoveryModeOption::Default,
+        Some(value) => {
+            let config: DiscoveryConfigArg = serde_json::from_value(value).map_err(|error| {
+                BridgeError::invalid_request(format!("invalid discoveryMode: {error}"))
+            })?;
+            build_discovery_mode(Some(config)).map_err(BridgeError::invalid_request)?
+        }
+    };
+    Ok((relay, discovery))
 }
 
 fn parse_ticket_type(value: Option<&str>) -> Result<AddrInfoOptions, BridgeError> {
@@ -218,40 +253,6 @@ fn parse_ticket_type(value: Option<&str>) -> Result<AddrInfoOptions, BridgeError
             "invalid ticketType: {other}"
         ))),
     }
-}
-
-fn reject_unsupported_discovery(value: &Option<Value>) -> Result<(), BridgeError> {
-    let Some(mode) = value else {
-        return Ok(());
-    };
-
-    if mode.is_null() {
-        return Ok(());
-    }
-
-    if let Some(mode_text) = mode.as_str() {
-        if mode_text == "default" {
-            return Ok(());
-        }
-    }
-
-    Err(BridgeError::unsupported(
-        "custom discovery mode is not supported yet",
-    ))
-}
-
-fn reject_custom_relay_fields(
-    urls: &Option<Vec<String>>,
-    token: &Option<String>,
-) -> Result<(), BridgeError> {
-    if urls.as_ref().is_some_and(|values| !values.is_empty())
-        || token.as_ref().is_some_and(|v| !v.is_empty())
-    {
-        return Err(BridgeError::unsupported(
-            "custom relay configuration is not supported yet",
-        ));
-    }
-    Ok(())
 }
 
 fn validate_session_id(session_id: &str) -> Result<(), BridgeError> {
@@ -321,6 +322,12 @@ impl NodeStartRequest {
             .map(|name| normalize_display_name(&name).map_err(BridgeError::invalid_request))
             .transpose()?;
         let device_type = self.device_type.map(validate_device_type).transpose()?;
+        let (relay_mode, discovery_mode) = parse_network_modes(
+            self.relay_mode.as_deref(),
+            self.relay_urls,
+            self.relay_auth_token,
+            self.discovery_mode,
+        )?;
 
         Ok(ValidatedNodeStart {
             session_id: self.session_id,
@@ -328,6 +335,8 @@ impl NodeStartRequest {
             display_name,
             device_type,
             discoverability: parse_discoverability(&self.discoverability)?,
+            relay_mode,
+            discovery_mode,
         })
     }
 }
@@ -433,8 +442,12 @@ impl ShareRequest {
             return Err(BridgeError::invalid_request("paths must not be empty"));
         }
 
-        reject_unsupported_discovery(&self.discovery_mode)?;
-        reject_custom_relay_fields(&self.relay_urls, &self.relay_auth_token)?;
+        let (relay_mode, discovery_mode) = parse_network_modes(
+            self.relay_mode.as_deref(),
+            self.relay_urls,
+            self.relay_auth_token,
+            self.discovery_mode,
+        )?;
 
         let mut parsed_paths = Vec::with_capacity(self.paths.len());
         for path in self.paths {
@@ -443,8 +456,8 @@ impl ShareRequest {
         }
 
         let send_options = SendOptions {
-            relay_mode: parse_relay_mode(self.relay_mode.as_deref())?,
-            discovery_mode: DiscoveryModeOption::Default,
+            relay_mode,
+            discovery_mode,
             ticket_type: parse_ticket_type(self.ticket_type.as_deref())?,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
@@ -462,13 +475,17 @@ impl ReceiveRequest {
         }
         validate_real_path(&self.output_dir)?;
 
-        reject_unsupported_discovery(&self.discovery_mode)?;
-        reject_custom_relay_fields(&self.relay_urls, &self.relay_auth_token)?;
+        let (relay_mode, discovery_mode) = parse_network_modes(
+            self.relay_mode.as_deref(),
+            self.relay_urls,
+            self.relay_auth_token,
+            self.discovery_mode,
+        )?;
 
         let options = ReceiveOptions {
             output_dir: Some(PathBuf::from(self.output_dir)),
-            relay_mode: parse_relay_mode(self.relay_mode.as_deref())?,
-            discovery_mode: DiscoveryModeOption::Default,
+            relay_mode,
+            discovery_mode,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
         };
@@ -484,13 +501,17 @@ impl MetadataRequest {
             return Err(BridgeError::invalid_request("ticket is required"));
         }
 
-        reject_unsupported_discovery(&self.discovery_mode)?;
-        reject_custom_relay_fields(&self.relay_urls, &self.relay_auth_token)?;
+        let (relay_mode, discovery_mode) = parse_network_modes(
+            self.relay_mode.as_deref(),
+            self.relay_urls,
+            self.relay_auth_token,
+            self.discovery_mode,
+        )?;
 
         let options = ReceiveOptions {
             output_dir: None,
-            relay_mode: parse_relay_mode(self.relay_mode.as_deref())?,
-            discovery_mode: DiscoveryModeOption::Default,
+            relay_mode,
+            discovery_mode,
             magic_ipv4_addr: None,
             magic_ipv6_addr: None,
         };
@@ -537,6 +558,135 @@ mod tests {
         assert_eq!(validated.display_name.as_deref(), Some("My Phone"));
         assert_eq!(validated.device_type.as_deref(), Some("phone"));
         assert_eq!(validated.discoverability, Discoverability::PairedOnly);
+        assert!(matches!(validated.relay_mode, RelayModeOption::Default));
+        assert!(matches!(
+            validated.discovery_mode,
+            DiscoveryModeOption::Default
+        ));
+    }
+
+    #[test]
+    fn node_start_request_accepts_custom_network() {
+        let request: NodeStartRequest = parse_request(
+            &serde_json::json!({
+                "sessionId": "node-custom",
+                "dataDir": absolute_data_dir(),
+                "discoverability": "everyone",
+                "relayMode": "custom",
+                "relayUrls": ["https://relay.example.com"],
+                "discoveryMode": {
+                    "mode": "custom",
+                    "pkarr_relay_url": "https://dns.example.com/pkarr",
+                    "dns_origin": "example.com"
+                }
+            })
+            .to_string(),
+        )
+        .expect("parse custom node request");
+
+        let validated = request.validate().expect("validate custom network");
+        assert!(matches!(
+            validated.relay_mode,
+            RelayModeOption::Custom { .. }
+        ));
+        assert!(matches!(
+            validated.discovery_mode,
+            DiscoveryModeOption::Custom { .. }
+        ));
+    }
+
+    #[test]
+    fn network_modes_reject_invalid_custom_urls() {
+        assert_eq!(
+            parse_network_modes(
+                Some("custom"),
+                Some(vec!["http://relay.example.com".into()]),
+                None,
+                None
+            )
+            .expect_err("insecure relay")
+            .code,
+            "invalid_request"
+        );
+        assert_eq!(
+            parse_network_modes(
+                None,
+                None,
+                None,
+                Some(serde_json::json!({
+                    "mode": "custom", "pkarr_relay_url": "https://user@dns.example.com/pkarr"
+                }))
+            )
+            .expect_err("credentialed discovery")
+            .code,
+            "invalid_request"
+        );
+    }
+
+    #[test]
+    fn transfer_requests_use_custom_network_settings() {
+        let custom_network = serde_json::json!({
+            "relayMode": "custom",
+            "relayUrls": ["https://relay.example.com"],
+            "discoveryMode": {
+                "mode": "custom",
+                "pkarr_relay_url": "https://dns.example.com/pkarr"
+            }
+        });
+        let share: ShareRequest = parse_request(
+            &serde_json::json!({
+                "sessionId": "share-1",
+                "paths": [absolute_data_dir()],
+                "relayMode": custom_network["relayMode"],
+                "relayUrls": custom_network["relayUrls"],
+                "discoveryMode": custom_network["discoveryMode"]
+            })
+            .to_string(),
+        )
+        .expect("parse share");
+        let (_, _, _, send) = share.validate().expect("validate share");
+        assert!(matches!(send.relay_mode, RelayModeOption::Custom { .. }));
+        assert!(matches!(
+            send.discovery_mode,
+            DiscoveryModeOption::Custom { .. }
+        ));
+
+        let receive: ReceiveRequest = parse_request(
+            &serde_json::json!({
+                "sessionId": "receive-1",
+                "ticket": "ticket",
+                "outputDir": absolute_data_dir(),
+                "relayMode": custom_network["relayMode"],
+                "relayUrls": custom_network["relayUrls"],
+                "discoveryMode": custom_network["discoveryMode"]
+            })
+            .to_string(),
+        )
+        .expect("parse receive");
+        let (_, _, options) = receive.validate().expect("validate receive");
+        assert!(matches!(options.relay_mode, RelayModeOption::Custom { .. }));
+        assert!(matches!(
+            options.discovery_mode,
+            DiscoveryModeOption::Custom { .. }
+        ));
+
+        let metadata: MetadataRequest = parse_request(
+            &serde_json::json!({
+                "sessionId": "metadata-1",
+                "ticket": "ticket",
+                "relayMode": custom_network["relayMode"],
+                "relayUrls": custom_network["relayUrls"],
+                "discoveryMode": custom_network["discoveryMode"]
+            })
+            .to_string(),
+        )
+        .expect("parse metadata");
+        let (_, _, options) = metadata.validate().expect("validate metadata");
+        assert!(matches!(options.relay_mode, RelayModeOption::Custom { .. }));
+        assert!(matches!(
+            options.discovery_mode,
+            DiscoveryModeOption::Custom { .. }
+        ));
     }
 
     #[test]

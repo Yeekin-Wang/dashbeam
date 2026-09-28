@@ -68,3 +68,7 @@ codegen-units = 1
 lto = true
 debug = "none"
 strip = true
+
+[patch.crates-io]
+iroh = { path = "vendor/iroh" }
+noq-udp = { path = "vendor/noq-udp" }

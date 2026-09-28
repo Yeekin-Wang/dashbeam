@@ -29,7 +29,9 @@ set(DASHBEAM_RUST_ARCHIVE
 file(GLOB_RECURSE DASHBEAM_RUST_SOURCES CONFIGURE_DEPENDS
 	"${DASHBEAM_RUST_ROOT}/ohos-bridge/src/*.rs"
 	"${DASHBEAM_RUST_ROOT}/native/src/*.rs"
-	"${DASHBEAM_RUST_ROOT}/protocol/src/*.rs")
+	"${DASHBEAM_RUST_ROOT}/protocol/src/*.rs"
+	"${DASHBEAM_RUST_ROOT}/vendor/iroh/src/*.rs"
+	"${DASHBEAM_RUST_ROOT}/vendor/noq-udp/src/*.rs")
 
 add_custom_command(
 	OUTPUT "${DASHBEAM_RUST_ARCHIVE}"
@@ -43,6 +45,10 @@ add_custom_command(
 		"${DASHBEAM_RUST_ROOT}/ohos-bridge/Cargo.toml"
 		"${DASHBEAM_RUST_ROOT}/native/Cargo.toml"
 		"${DASHBEAM_RUST_ROOT}/protocol/Cargo.toml"
+		"${DASHBEAM_RUST_ROOT}/vendor/iroh/Cargo.toml"
+		"${DASHBEAM_RUST_ROOT}/vendor/noq-udp/Cargo.toml"
+		"${DASHBEAM_RUST_ROOT}/vendor/iroh/build.rs"
+		"${DASHBEAM_RUST_ROOT}/vendor/noq-udp/build.rs"
 		${DASHBEAM_RUST_SOURCES}
 	WORKING_DIRECTORY "${DASHBEAM_REPO_ROOT}"
 	COMMENT "Building DashBeam Rust engine for ${OHOS_ARCH}"

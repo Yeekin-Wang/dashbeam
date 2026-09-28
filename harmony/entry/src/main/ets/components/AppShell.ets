@@ -18,11 +18,40 @@ import {
 import { appLinkService, AppLinkListener } from '../services/AppLinkService'
 import { engineService, NodeListener } from '../services/EngineService'
 import { platformService } from '../services/PlatformService'
+import { systemIntegrationService } from '../services/SystemIntegrationService'
 
 type NodeChangedCallback = (snapshot: NodeSnapshot) => void
 type DevicesChangedCallback = (paired: Array<PairedDevice>, nearby: Array<NearbyDevice>) => void
 type NearbyPairRequestCallback = (request: NearbyPairRequest) => void
 type TransferInviteCallback = (invite: IncomingTransferInvite) => void
+
+interface NoticePanel {
+  title: string
+  status: string
+  detail: string
+}
+
+interface PlainPanel {
+  title: string
+  detail: string
+}
+
+interface ProgressPanel {
+  progress: TransferProgress
+}
+
+interface SettingField {
+  label: string
+  value: string
+  placeholder: string
+  onValueChanged: (value: string) => void
+}
+
+interface ToggleRow {
+  label: string
+  enabled: boolean
+  onToggleChanged: (value: boolean) => void
+}
 
 class AppShellNodeListener implements NodeListener {
   private readonly nodeChangedCallback: NodeChangedCallback
@@ -69,6 +98,7 @@ export struct AppShell {
   @State private nearbyDevices: Array<NearbyDevice> = []
   @State private historyEntries: Array<HistoryEntry> = []
   @State private settings: AppSettings = new AppSettings()
+  @State private notificationEnabled: boolean = false
   @State private displayState: DisplayState = new DisplayState()
   @State private engineSnapshot: EngineSnapshot = new EngineSnapshot()
   @State private nodeSnapshot: NodeSnapshot = new NodeSnapshot()
@@ -78,7 +108,7 @@ export struct AppShell {
   @State private receiveFolder: string = ''
   @State private receivePreviewTitle: string = '尚未解析票据'
   @State private receivePreviewDetail: string = '输入票据后可向发送方读取真实文件元数据。'
-  @State private nodeOperationStatus: string = '等待 Iroh NodeService 就绪。'
+  @State private nodeOperationStatus: string = ''
   @State private pairingJoinTicket: string = ''
   @State private pendingNearbyPairRequest: NearbyPairRequest = new NearbyPairRequest()
   @State private hasPendingNearbyPairRequest: boolean = false
@@ -150,6 +180,11 @@ export struct AppShell {
       this.historyEntries = await engineService.listHistory()
       this.settings = await engineService.loadSettings()
       this.displayState = platformService.getDisplayState()
+      try {
+        this.notificationEnabled = await systemIntegrationService.isNotificationEnabled()
+      } catch (_error) {
+        this.notificationEnabled = false
+      }
     } catch (error) {
       throw new Error((error as Error).message)
     }
@@ -184,9 +219,18 @@ export struct AppShell {
   }
 
   private async chooseFiles(): Promise<void> {
-    let items: Array<TransferItem> = await platformService.selectFiles()
-    this.sendItems = [...this.sendItems, ...items]
-    this.markSelectedState()
+    try {
+      let items: Array<TransferItem> = await platformService.selectFiles()
+      this.sendItems = [...this.sendItems, ...items]
+      this.markSelectedState()
+    } catch (error) {
+      let progress: TransferProgress = new TransferProgress()
+      progress.stage = TransferStage.ERROR
+      progress.title = '选择文件失败'
+      progress.detail = '无法打开文件选择器。'
+      progress.errorMessage = (error as Error).message
+      this.sendState = progress
+    }
   }
 
   private async chooseFolder(): Promise<void> {
@@ -283,19 +327,25 @@ export struct AppShell {
   private async updateRelay(value: string): Promise<void> {
     let nextSettings: AppSettings = this.settings.clone()
     nextSettings.defaultRelay = value
-    await this.persistSettings(nextSettings)
+    if (await this.persistSettings(nextSettings)) {
+      this.nodeOperationStatus = 'Relay 已保存；重启应用后设备节点会使用新配置。'
+    }
   }
 
   private async updateDiscovery(value: string): Promise<void> {
     let nextSettings: AppSettings = this.settings.clone()
     nextSettings.defaultDiscovery = value
-    await this.persistSettings(nextSettings)
+    if (await this.persistSettings(nextSettings)) {
+      this.nodeOperationStatus = 'Discovery 已保存；重启应用后设备节点会使用新配置。'
+    }
   }
 
   private async updateDnsOrigin(value: string): Promise<void> {
     let nextSettings: AppSettings = this.settings.clone()
     nextSettings.dnsOrigin = value
-    await this.persistSettings(nextSettings)
+    if (await this.persistSettings(nextSettings)) {
+      this.nodeOperationStatus = 'DNS Origin 已保存；重启应用后设备节点会使用新配置。'
+    }
   }
 
   private async updateDiscoverable(value: boolean): Promise<void> {
@@ -320,6 +370,16 @@ export struct AppShell {
     let nextSettings: AppSettings = this.settings.clone()
     nextSettings.resumeInBackground = value
     await this.persistSettings(nextSettings)
+  }
+
+  private async enableNotifications(): Promise<void> {
+    await systemIntegrationService.requestNotificationAuthorization()
+    try {
+      this.notificationEnabled = await systemIntegrationService.isNotificationEnabled()
+      this.nodeOperationStatus = this.notificationEnabled ? '通知已开启。' : '通知未开启，可在系统设置中授权。'
+    } catch (error) {
+      this.nodeOperationStatus = '通知状态读取失败：' + (error as Error).message
+    }
   }
 
   private updateBreakpoint(width: number, height: number): void {
@@ -648,7 +708,11 @@ export struct AppShell {
 
       Blank()
 
-      this.buildNoticePanel('引擎状态', this.engineSnapshot.availability === EngineAvailability.UNAVAILABLE ? '未接入' : '可用', this.engineSnapshot.message)
+      this.buildNoticePanel({
+        title: '引擎状态',
+        status: this.engineSnapshot.availability === EngineAvailability.UNAVAILABLE ? '未接入' : '可用',
+        detail: this.engineSnapshot.message
+      })
     }
     .padding(16)
     .width(this.breakpoint === 'lg' ? 220 : 188)
@@ -739,18 +803,18 @@ export struct AppShell {
   }
 
   @Builder
-  private buildNoticePanel(title: string, status: string, detail: string): void {
+  private buildNoticePanel(panel: NoticePanel): void {
     Column({ space: 6 }) {
-      Text(title)
+      Text(panel.title)
         .fontSize($r('app.float.body_s'))
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
-      Text(status)
+      Text(panel.status)
         .fontSize($r('app.float.body_m'))
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
         .width('100%')
-      Text(detail)
+      Text(panel.detail)
         .fontSize($r('app.float.caption'))
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
@@ -761,14 +825,14 @@ export struct AppShell {
   }
 
   @Builder
-  private buildPlainPanel(title: string, detail: string): void {
+  private buildPlainPanel(panel: PlainPanel): void {
     Column({ space: 6 }) {
-      Text(title)
+      Text(panel.title)
         .fontSize($r('app.float.body_m'))
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
         .width('100%')
-      Text(detail)
+      Text(panel.detail)
         .fontSize($r('app.float.body_s'))
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
@@ -779,39 +843,39 @@ export struct AppShell {
   }
 
   @Builder
-  private buildProgressPanel(progress: TransferProgress): void {
+  private buildProgressPanel(panel: ProgressPanel): void {
     Column({ space: 8 }) {
       Row() {
-        Text(progress.title)
+        Text(panel.progress.title)
           .fontSize($r('app.float.body_m'))
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary'))
         Blank()
-        Text(this.stageLabel(progress.stage))
+        Text(this.stageLabel(panel.progress.stage))
           .fontSize($r('app.float.caption'))
           .fontColor($r('app.color.text_secondary'))
       }
-      Text(progress.detail)
+      Text(panel.progress.detail)
         .fontSize($r('app.float.body_s'))
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
-      Progress({ value: progress.progressRatio * 100, total: 100, type: ProgressType.Linear })
+      Progress({ value: panel.progress.progressRatio * 100, total: 100, type: ProgressType.Linear })
         .color($r('app.color.accent'))
-      if (progress.bytesLabel.length > 0 || progress.speedLabel.length > 0) {
+      if (panel.progress.bytesLabel.length > 0 || panel.progress.speedLabel.length > 0) {
         Row() {
-          Text(progress.bytesLabel)
+          Text(panel.progress.bytesLabel)
             .fontSize($r('app.float.caption'))
             .fontColor($r('app.color.text_secondary'))
           Blank()
-          Text(progress.speedLabel)
+          Text(panel.progress.speedLabel)
             .fontSize($r('app.float.caption'))
             .fontColor($r('app.color.text_secondary'))
         }
         .width('100%')
       }
-      if (progress.ticket.length > 0) {
+      if (panel.progress.ticket.length > 0) {
         Column({ space: 8 }) {
-          Text('票据：' + progress.ticket)
+          Text('票据：' + panel.progress.ticket)
             .fontSize($r('app.float.caption'))
             .fontColor($r('app.color.text_secondary'))
             .width('100%')
@@ -823,19 +887,19 @@ export struct AppShell {
             })
         }
       }
-      if (progress.errorMessage.length > 0) {
-        Text(progress.errorMessage)
+      if (panel.progress.errorMessage.length > 0) {
+        Text(panel.progress.errorMessage)
           .fontSize($r('app.float.caption'))
           .fontColor($r('app.color.critical'))
           .width('100%')
       }
-      if ((progress.stage === TransferStage.SHARING || progress.stage === TransferStage.RECEIVING) &&
-        progress.transferId.length > 0) {
+      if ((panel.progress.stage === TransferStage.SHARING || panel.progress.stage === TransferStage.RECEIVING) &&
+        panel.progress.transferId.length > 0) {
         Button('取消')
           .type(ButtonType.Capsule)
           .height(30)
           .onClick(() => {
-            this.cancelTransfer(progress.transferId)
+            this.cancelTransfer(panel.progress.transferId)
           })
       }
     }
@@ -847,10 +911,10 @@ export struct AppShell {
   @Builder
   private buildSendSection(): void {
     Column({ space: 14 }) {
-      this.buildPlainPanel('发送清单', '开始共享后会暂存所选内容，并递归计算真实字节数。')
+      this.buildPlainPanel({ title: '发送清单', detail: '开始共享后会暂存所选内容，并递归计算真实字节数。' })
 
       if (this.sendItems.length === 0) {
-        this.buildPlainPanel('空态', '尚未选择任何文件或文件夹。')
+        this.buildPlainPanel({ title: '空态', detail: '尚未选择任何文件或文件夹。' })
       } else {
         ForEach(this.sendItems, (item: TransferItem) => {
           Row() {
@@ -916,7 +980,7 @@ export struct AppShell {
           })
       }
 
-      this.buildProgressPanel(this.sendState)
+      this.buildProgressPanel({ progress: this.sendState })
 
       if (this.sendState.stage === TransferStage.SHARING && this.sendState.ticket.length > 0) {
         Text('发送到设备')
@@ -925,10 +989,10 @@ export struct AppShell {
           .fontColor($r('app.color.text_primary'))
           .width('100%')
         if (this.sendInviteStatus.length > 0) {
-          this.buildPlainPanel('邀请状态', this.sendInviteStatus)
+          this.buildPlainPanel({ title: '邀请状态', detail: this.sendInviteStatus })
         }
         if (this.pairedDevices.length === 0 && this.nearbyDevices.length === 0) {
-          this.buildPlainPanel('暂无目标', 'Iroh NodeService 当前没有已配对或附近设备。')
+          this.buildPlainPanel({ title: '暂无目标', detail: 'Iroh NodeService 当前没有已配对或附近设备。' })
         }
         ForEach(this.pairedDevices, (device: PairedDevice) => {
           Row() {
@@ -1021,7 +1085,7 @@ export struct AppShell {
       }
 
       if (this.receiveInviteStatus.length > 0) {
-        this.buildPlainPanel('邀请状态', this.receiveInviteStatus)
+        this.buildPlainPanel({ title: '邀请状态', detail: this.receiveInviteStatus })
       }
 
       TextArea({ text: this.receiveTicket, placeholder: $r('app.string.ticket_placeholder') })
@@ -1035,7 +1099,7 @@ export struct AppShell {
             '输入票据后可向发送方读取真实文件元数据。'
         })
 
-      this.buildPlainPanel('元数据预览', this.receivePreviewTitle + '\n' + this.receivePreviewDetail)
+      this.buildPlainPanel({ title: '元数据预览', detail: this.receivePreviewTitle + '\n' + this.receivePreviewDetail })
       Button('解析元数据')
         .width('100%')
         .enabled(this.receiveTicket.trim().length > 0)
@@ -1048,7 +1112,8 @@ export struct AppShell {
           .fontSize($r('app.float.body_s'))
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
-        this.buildPlainPanel('保存目标 URI', this.receiveFolder.length > 0 ? this.receiveFolder : '尚未选择保存位置')
+        this.buildPlainPanel({ title: '保存目标 URI', detail: this.receiveFolder.length > 0 ?
+          this.receiveFolder : '尚未选择保存位置' })
         Button('选择保存位置')
           .width('100%')
           .onClick(() => {
@@ -1072,22 +1137,22 @@ export struct AppShell {
           })
       }
 
-      this.buildProgressPanel(this.receiveState)
+      this.buildProgressPanel({ progress: this.receiveState })
     }
   }
 
   @Builder
   private buildDevicesSection(): void {
     Column({ space: 12 }) {
-      this.buildNoticePanel(
-        'Iroh NodeService',
-        '状态：' + this.nodeSnapshot.status,
-        this.nodeSnapshot.message + '\n设备名：' +
+      this.buildNoticePanel({
+        title: 'Iroh NodeService',
+        status: '状态：' + this.nodeSnapshot.status,
+        detail: this.nodeSnapshot.message + '\n设备名：' +
           (this.nodeSnapshot.deviceName.length > 0 ? this.nodeSnapshot.deviceName : '尚未读取') +
           '\nEndpoint：' + (this.nodeSnapshot.endpointId.length > 0 ? this.nodeSnapshot.endpointId : '尚未读取') +
           '\n网络：' + (this.nodeSnapshot.networkReady ? '已就绪' : '未就绪')
-      )
-      this.buildPlainPanel('节点操作状态', this.nodeOperationStatus)
+      })
+      this.buildPlainPanel({ title: '节点操作状态', detail: this.nodeOperationStatus })
 
       if (this.hasPendingNearbyPairRequest) {
         Column({ space: 8 }) {
@@ -1132,8 +1197,8 @@ export struct AppShell {
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
         .width('100%')
-      this.buildPlainPanel('5 分钟接待票据', this.nodeSnapshot.pairingTicket.length > 0 ?
-        this.nodeSnapshot.pairingTicket : '尚未开始配对接待。')
+      this.buildPlainPanel({ title: '5 分钟接待票据', detail: this.nodeSnapshot.pairingTicket.length > 0 ?
+        this.nodeSnapshot.pairingTicket : '尚未开始配对接待。' })
       Row({ space: 8 }) {
         Button('生成票据')
           .layoutWeight(1)
@@ -1174,7 +1239,7 @@ export struct AppShell {
         .fontColor($r('app.color.text_primary'))
         .width('100%')
       if (this.pairedDevices.length === 0) {
-        this.buildPlainPanel('空态', 'Iroh NodeService 当前没有已配对设备。')
+        this.buildPlainPanel({ title: '空态', detail: 'Iroh NodeService 当前没有已配对设备。' })
       } else {
         ForEach(this.pairedDevices, (device: PairedDevice) => {
           Row() {
@@ -1209,7 +1274,7 @@ export struct AppShell {
         .fontColor($r('app.color.text_primary'))
         .width('100%')
       if (this.nearbyDevices.length === 0) {
-        this.buildPlainPanel('空态', 'Iroh NodeService 当前没有发现附近设备。')
+        this.buildPlainPanel({ title: '空态', detail: 'Iroh NodeService 当前没有发现附近设备。' })
       } else {
         ForEach(this.nearbyDevices, (device: NearbyDevice) => {
           Row() {
@@ -1250,7 +1315,7 @@ export struct AppShell {
   private buildHistorySection(): void {
     Column({ space: 12 }) {
       if (this.historyEntries.length === 0) {
-        this.buildPlainPanel('空态', '尚无真实传输历史。只有发送完成或接收内容成功导出后才会落盘记录。')
+        this.buildPlainPanel({ title: '空态', detail: '尚无真实传输历史。只有发送完成或接收内容成功导出后才会落盘记录。' })
       } else {
         ForEach(this.historyEntries, (entry: HistoryEntry) => {
           Column({ space: 4 }) {
@@ -1285,67 +1350,101 @@ export struct AppShell {
   @Builder
   private buildSettingsSection(): void {
     Column({ space: 12 }) {
-      this.buildPlainPanel('节点操作状态', this.nodeOperationStatus)
-      this.buildSettingField('设备名', this.settings.deviceName, '设备名', (value: string) => {
-        this.updateDeviceName(value)
+      if (this.nodeOperationStatus.length > 0) {
+        this.buildPlainPanel({ title: '节点操作状态', detail: this.nodeOperationStatus })
+      }
+      this.buildSettingField({ label: '设备名', value: this.settings.deviceName, placeholder: '设备名',
+        onValueChanged: (value: string) => {
+          this.updateDeviceName(value)
+        }
       })
-      this.buildSettingField('主题', this.settings.theme, '主题', (value: string) => {
-        this.updateTheme(value)
+      this.buildSettingField({ label: '主题', value: this.settings.theme, placeholder: '主题',
+        onValueChanged: (value: string) => {
+          this.updateTheme(value)
+        }
       })
-      this.buildToggleRow('可发现性', this.settings.discoverable, (value: boolean) => {
-        this.updateDiscoverable(value)
+      this.buildToggleRow({ label: '可发现性', enabled: this.settings.discoverable,
+        onToggleChanged: (value: boolean) => {
+          this.updateDiscoverable(value)
+        }
       })
-      this.buildSettingField('自定义 Relay URL', this.settings.defaultRelay, '默认模式下留空', (value: string) => {
-        this.updateRelay(value)
+      this.buildSettingField({ label: '自定义 Relay URL', value: this.settings.defaultRelay,
+        placeholder: '默认模式下留空', onValueChanged: (value: string) => {
+          this.updateRelay(value)
+        }
       })
-      this.buildSettingField('自定义 Discovery URL', this.settings.defaultDiscovery, '默认模式下留空', (value: string) => {
-        this.updateDiscovery(value)
+      this.buildSettingField({ label: '自定义 Discovery URL', value: this.settings.defaultDiscovery,
+        placeholder: '默认模式下留空', onValueChanged: (value: string) => {
+          this.updateDiscovery(value)
+        }
       })
-      this.buildSettingField('DNS Origin', this.settings.dnsOrigin, '默认模式下留空', (value: string) => {
-        this.updateDnsOrigin(value)
+      this.buildSettingField({ label: 'DNS Origin', value: this.settings.dnsOrigin,
+        placeholder: '默认模式下留空', onValueChanged: (value: string) => {
+          this.updateDnsOrigin(value)
+        }
       })
-      this.buildToggleRow('后台恢复传输', this.settings.resumeInBackground, (value: boolean) => {
-        this.updateResumeInBackground(value)
+      this.buildToggleRow({ label: '后台恢复传输', enabled: this.settings.resumeInBackground,
+        onToggleChanged: (value: boolean) => {
+          this.updateResumeInBackground(value)
+        }
       })
-      this.buildPlainPanel('关于', this.settings.about +
-        '\nHarmonyOS 原生桥已接通 Rust ABI 2 传输、Iroh NodeService、配对与附近设备。' +
-        '\n通知、后台任务与 App Linking 尚未实现。')
+      Row() {
+        Column({ space: 2 }) {
+          Text('后台通知')
+            .fontSize($r('app.float.body_m'))
+            .fontColor($r('app.color.text_primary'))
+          Text(this.notificationEnabled ? '已开启' : '未开启')
+            .fontSize($r('app.float.caption'))
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Button('开启通知')
+          .enabled(!this.notificationEnabled)
+          .onClick(() => {
+            this.enableNotifications()
+          })
+      }
+      .padding(12)
+      .backgroundColor($r('app.color.panel_surface'))
+      .borderRadius($r('app.float.radius_s'))
+      this.buildPlainPanel({ title: '关于', detail: this.settings.about })
     }
   }
 
   @Builder
-  private buildSettingField(label: string, value: string, placeholder: string, onValueChanged: (value: string) => void): void {
+  private buildSettingField(field: SettingField): void {
     Column({ space: 6 }) {
-      Text(label)
+      Text(field.label)
         .fontSize($r('app.float.body_s'))
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
-      TextInput({ text: value, placeholder: placeholder })
+      TextInput({ text: field.value, placeholder: field.placeholder })
         .backgroundColor($r('app.color.panel_surface'))
         .borderRadius($r('app.float.radius_s'))
         .onChange((nextValue: string) => {
-          onValueChanged(nextValue)
+          field.onValueChanged(nextValue)
         })
     }
   }
 
   @Builder
-  private buildToggleRow(label: string, enabled: boolean, onToggleChanged: (value: boolean) => void): void {
+  private buildToggleRow(toggle: ToggleRow): void {
     Row() {
       Column({ space: 2 }) {
-        Text(label)
+        Text(toggle.label)
           .fontSize($r('app.float.body_m'))
           .fontColor($r('app.color.text_primary'))
           .width('100%')
-        Text(enabled ? '已启用' : '已关闭')
+        Text(toggle.enabled ? '已启用' : '已关闭')
           .fontSize($r('app.float.caption'))
           .fontColor($r('app.color.text_secondary'))
           .width('100%')
       }
       .layoutWeight(1)
-      Toggle({ type: ToggleType.Switch, isOn: enabled })
+      Toggle({ type: ToggleType.Switch, isOn: toggle.enabled })
         .onChange((value: boolean) => {
-          onToggleChanged(value)
+          toggle.onToggleChanged(value)
         })
     }
     .padding(12)
@@ -1356,13 +1455,16 @@ export struct AppShell {
   @Builder
   private buildContextPane(): void {
     Column({ space: 12 }) {
-      this.buildPlainPanel('当前布局', this.breakpoint === 'lg' ? '大屏三栏：导航 + 内容 + 上下文。' : '中屏双栏：导航 + 内容。')
-      this.buildPlainPanel('响应式规则', '仅由窗口宽度断点控制：sm < 600，md 600-839，lg >= 840。')
-      this.buildPlainPanel('显示信息', '宽 ' + this.displayState.width + ' · 高 ' + this.displayState.height + ' · 旋转 ' + this.displayState.rotation)
-      this.buildPlainPanel('折叠状态', this.displayState.isFoldable ? this.displayState.foldStatus : '当前设备不可折叠或未暴露折叠能力')
-      this.buildPlainPanel('Iroh NodeService', this.nodeSnapshot.status + ' · ' +
-        (this.nodeSnapshot.networkReady ? '网络已就绪' : '网络未就绪') + '\n' + this.nodeSnapshot.message)
-      this.buildPlainPanel('传输引擎', this.engineSnapshot.message)
+      this.buildPlainPanel({ title: '当前布局', detail: this.breakpoint === 'lg' ?
+        '大屏三栏：导航 + 内容 + 上下文。' : '中屏双栏：导航 + 内容。' })
+      this.buildPlainPanel({ title: '响应式规则', detail: '仅由窗口宽度断点控制：sm < 600，md 600-839，lg >= 840。' })
+      this.buildPlainPanel({ title: '显示信息', detail: '宽 ' + this.displayState.width + ' · 高 ' +
+        this.displayState.height + ' · 旋转 ' + this.displayState.rotation })
+      this.buildPlainPanel({ title: '折叠状态', detail: this.displayState.isFoldable ?
+        this.displayState.foldStatus : '当前设备不可折叠或未暴露折叠能力' })
+      this.buildPlainPanel({ title: 'Iroh NodeService', detail: this.nodeSnapshot.status + ' · ' +
+        (this.nodeSnapshot.networkReady ? '网络已就绪' : '网络未就绪') + '\n' + this.nodeSnapshot.message })
+      this.buildPlainPanel({ title: '传输引擎', detail: this.engineSnapshot.message })
     }
     .padding(16)
     .width(240)
