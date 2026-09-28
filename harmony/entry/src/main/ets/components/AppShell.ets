@@ -19,6 +19,7 @@ import { appLinkService, AppLinkListener } from '../services/AppLinkService'
 import { engineService, NodeListener } from '../services/EngineService'
 import { platformService } from '../services/PlatformService'
 import { systemIntegrationService } from '../services/SystemIntegrationService'
+import { DesignPreview } from './DesignPreview'
 
 type NodeChangedCallback = (snapshot: NodeSnapshot) => void
 type DevicesChangedCallback = (paired: Array<PairedDevice>, nearby: Array<NearbyDevice>) => void
@@ -51,6 +52,12 @@ interface ToggleRow {
   label: string
   enabled: boolean
   onToggleChanged: (value: boolean) => void
+}
+
+interface PickerRgbField {
+  label: string
+  value: string
+  onValueChanged: (value: string) => void
 }
 
 class AppShellNodeListener implements NodeListener {
@@ -91,6 +98,7 @@ class AppShellNodeListener implements NodeListener {
 @Component
 export struct AppShell {
   @State private activeSection: NavSection = NavSection.SEND
+  @State private showDesignPreview: boolean = false
   @State private breakpoint: string = 'sm'
   @State private viewportHeight: number = 720
   @State private sendItems: Array<TransferItem> = []
@@ -98,6 +106,22 @@ export struct AppShell {
   @State private nearbyDevices: Array<NearbyDevice> = []
   @State private historyEntries: Array<HistoryEntry> = []
   @State private settings: AppSettings = new AppSettings()
+  @State private themeAccent: string = '#226250'
+  @State private themeSelected: string = '#33226250'
+  @State private themeTint: string = '#24226250'
+  @State private themeActionText: string = '#FFFFFF'
+  @State private showColorPicker: boolean = false
+  @State private pickerEditing: boolean = false
+  @State private pickerHue: number = 0
+  @State private pickerWhiteness: number = 0
+  @State private pickerBrightness: number = 1
+  @State private pickerPlaneWidth: number = 220
+  @State private pickerBaseColor: string = '#FF0000'
+  @State private pickerPreview: string = '#226250'
+  @State private redInput: string = '34'
+  @State private greenInput: string = '98'
+  @State private blueInput: string = '80'
+  @State private colorError: string = ''
   @State private notificationEnabled: boolean = false
   @State private displayState: DisplayState = new DisplayState()
   @State private engineSnapshot: EngineSnapshot = new EngineSnapshot()
@@ -173,12 +197,13 @@ export struct AppShell {
   private async loadInitialState(): Promise<void> {
     try {
       this.folderSelectionSupported = platformService.isFolderSelectionSupported()
+      this.settings = await platformService.loadSettings()
+      this.applyAccent(this.settings.accentColor)
       await engineService.initializeNode()
       this.nodeSnapshot = engineService.getNodeSnapshot()
       this.pairedDevices = await engineService.listPairedDevices()
       this.nearbyDevices = await engineService.listNearbyDevices()
       this.historyEntries = await engineService.listHistory()
-      this.settings = await engineService.loadSettings()
       this.displayState = platformService.getDisplayState()
       try {
         this.notificationEnabled = await systemIntegrationService.isNotificationEnabled()
@@ -318,10 +343,152 @@ export struct AppShell {
     }
   }
 
-  private async updateTheme(value: string): Promise<void> {
+  private applyAccent(color: string): void {
+    this.themeAccent = color
+    this.themeSelected = '#33' + color.substring(1)
+    this.themeTint = '#38' + color.substring(1)
+    let red: number = parseInt(color.substring(1, 3), 16)
+    let green: number = parseInt(color.substring(3, 5), 16)
+    let blue: number = parseInt(color.substring(5, 7), 16)
+    this.redInput = red.toString()
+    this.greenInput = green.toString()
+    this.blueInput = blue.toString()
+    let redLinear: number = red / 255 <= 0.04045 ? red / 255 / 12.92 : Math.pow((red / 255 + 0.055) / 1.055, 2.4)
+    let greenLinear: number = green / 255 <= 0.04045 ? green / 255 / 12.92 :
+      Math.pow((green / 255 + 0.055) / 1.055, 2.4)
+    let blueLinear: number = blue / 255 <= 0.04045 ? blue / 255 / 12.92 :
+      Math.pow((blue / 255 + 0.055) / 1.055, 2.4)
+    let luminance: number = 0.2126 * redLinear + 0.7152 * greenLinear + 0.0722 * blueLinear
+    this.themeActionText = luminance > 0.179 ? '#000000' : '#FFFFFF'
+    this.colorError = ''
+  }
+
+  private async saveAccent(color: string): Promise<boolean> {
+    let previousColor: string = this.settings.accentColor
     let nextSettings: AppSettings = this.settings.clone()
-    nextSettings.theme = value
-    await this.persistSettings(nextSettings)
+    nextSettings.accentColor = color
+    this.applyAccent(color)
+    if (!await this.persistSettings(nextSettings)) {
+      this.settings.accentColor = previousColor
+      this.applyAccent(previousColor)
+      return false
+    }
+    return true
+  }
+
+  private rgbHex(red: number, green: number, blue: number): string {
+    return '#' + red.toString(16).padStart(2, '0') +
+      green.toString(16).padStart(2, '0') + blue.toString(16).padStart(2, '0')
+  }
+
+  private setPickerFromColor(color: string, syncInputs: boolean = true): void {
+    let red: number = parseInt(color.substring(1, 3), 16)
+    let green: number = parseInt(color.substring(3, 5), 16)
+    let blue: number = parseInt(color.substring(5, 7), 16)
+    let maximum: number = Math.max(red, green, blue)
+    let minimum: number = Math.min(red, green, blue)
+    let difference: number = maximum - minimum
+    let hue: number = 0
+    if (difference > 0 && maximum === red) {
+      hue = ((green - blue) / difference + 6) % 6
+    } else if (difference > 0 && maximum === green) {
+      hue = (blue - red) / difference + 2
+    } else if (difference > 0) {
+      hue = (red - green) / difference + 4
+    }
+    this.pickerHue = hue / 6
+    this.pickerWhiteness = maximum === 0 ? 0 : minimum / maximum
+    this.pickerBrightness = maximum / 255
+    this.pickerPreview = color
+    this.pickerBaseColor = this.pickerColorAt(1)
+    if (syncInputs) {
+      this.redInput = red.toString()
+      this.greenInput = green.toString()
+      this.blueInput = blue.toString()
+    }
+  }
+
+  private pickerColorAt(brightness: number): string {
+    let position: number = this.pickerHue * 6
+    let segment: number = Math.min(5, Math.floor(position))
+    let secondary: number = 255 * (1 - Math.abs(position % 2 - 1))
+    let hueRed: number = segment === 0 || segment === 5 ? 255 :
+      segment === 1 || segment === 4 ? secondary : 0
+    let hueGreen: number = segment === 1 || segment === 2 ? 255 :
+      segment === 0 || segment === 3 ? secondary : 0
+    let hueBlue: number = segment === 3 || segment === 4 ? 255 :
+      segment === 2 || segment === 5 ? secondary : 0
+    let whiteness: number = this.pickerWhiteness
+    return this.rgbHex(
+      Math.round((hueRed * (1 - whiteness) + 255 * whiteness) * brightness),
+      Math.round((hueGreen * (1 - whiteness) + 255 * whiteness) * brightness),
+      Math.round((hueBlue * (1 - whiteness) + 255 * whiteness) * brightness)
+    ).toUpperCase()
+  }
+
+  private updatePickerPreview(): void {
+    this.pickerBaseColor = this.pickerColorAt(1)
+    this.pickerPreview = this.pickerColorAt(this.pickerBrightness)
+    this.redInput = parseInt(this.pickerPreview.substring(1, 3), 16).toString()
+    this.greenInput = parseInt(this.pickerPreview.substring(3, 5), 16).toString()
+    this.blueInput = parseInt(this.pickerPreview.substring(5, 7), 16).toString()
+    this.colorError = ''
+  }
+
+  private updatePickerPlane(event: TouchEvent): void {
+    if ((event.type === TouchType.Down || event.type === TouchType.Move) && event.touches.length > 0) {
+      this.pickerHue = Math.max(0, Math.min(1, event.touches[0].x / this.pickerPlaneWidth))
+      this.pickerWhiteness = Math.max(0, Math.min(1, event.touches[0].y / 224))
+      this.updatePickerPreview()
+    }
+  }
+
+  private updatePickerBrightness(event: TouchEvent): void {
+    if ((event.type === TouchType.Down || event.type === TouchType.Move) && event.touches.length > 0) {
+      this.pickerBrightness = 1 - Math.max(0, Math.min(1, event.touches[0].y / 224))
+      this.updatePickerPreview()
+    }
+  }
+
+  private previewRgbInput(): void {
+    let red: number = this.parseRgbChannel(this.redInput)
+    let green: number = this.parseRgbChannel(this.greenInput)
+    let blue: number = this.parseRgbChannel(this.blueInput)
+    if (red >= 0 && green >= 0 && blue >= 0) {
+      this.setPickerFromColor(this.rgbHex(red, green, blue).toUpperCase(), false)
+    }
+    this.colorError = ''
+  }
+
+  private openColorPicker(): void {
+    this.setPickerFromColor(this.themeAccent)
+    this.colorError = ''
+    this.pickerEditing = false
+    this.showColorPicker = true
+  }
+
+  private parseRgbChannel(value: string): number {
+    if (!/^\d{1,3}$/.test(value)) {
+      return -1
+    }
+    let channel: number = Number(value)
+    return channel >= 0 && channel <= 255 ? channel : -1
+  }
+
+  private async saveRgbColor(): Promise<void> {
+    let red: number = this.parseRgbChannel(this.redInput)
+    let green: number = this.parseRgbChannel(this.greenInput)
+    let blue: number = this.parseRgbChannel(this.blueInput)
+    if (red < 0 || green < 0 || blue < 0) {
+      this.colorError = 'RGB 每项请输入 0–255 的整数。'
+      return
+    }
+    let color: string = this.rgbHex(red, green, blue).toUpperCase()
+    if (await this.saveAccent(color)) {
+      this.showColorPicker = false
+    } else {
+      this.colorError = '保存失败，请重试。'
+    }
   }
 
   private async updateRelay(value: string): Promise<void> {
@@ -372,6 +539,17 @@ export struct AppShell {
     await this.persistSettings(nextSettings)
   }
 
+  private async updateDisplayMode(mode: string): Promise<void> {
+    try {
+      platformService.applyDisplayMode(mode)
+      let nextSettings: AppSettings = this.settings.clone()
+      nextSettings.theme = mode
+      await this.persistSettings(nextSettings)
+    } catch (error) {
+      this.nodeOperationStatus = '显示模式切换失败：' + (error as Error).message
+    }
+  }
+
   private async enableNotifications(): Promise<void> {
     await systemIntegrationService.requestNotificationAuthorization()
     try {
@@ -417,18 +595,18 @@ export struct AppShell {
 
   private sectionSubtitle(): string {
     if (this.activeSection === NavSection.SEND) {
-      return '选择真实文件 URI，生成票据并查看实时发送进度。'
+      return '选择文件，生成票据，分享给对方。'
     }
     if (this.activeSection === NavSection.RECEIVE) {
-      return '输入票据、预览元数据并选择真实保存目标。'
+      return '粘贴票据，保存到这台设备。'
     }
     if (this.activeSection === NavSection.DEVICES) {
-      return '查看 Iroh NodeService、已配对设备与附近设备。'
+      return '找到设备，再建立连接。'
     }
     if (this.activeSection === NavSection.HISTORY) {
-      return '历史记录来自 Preferences 持久化，初始为空。'
+      return '每次往来，一目了然。'
     }
-    return '调整并持久化设备名、网络配置与恢复选项。'
+    return '这台设备的偏好。'
   }
 
   private stageLabel(stage: TransferStage): string {
@@ -687,16 +865,6 @@ export struct AppShell {
   @Builder
   private buildSidebar(): void {
     Column({ space: 8 }) {
-      Text($r('app.string.app_name'))
-        .fontSize($r('app.float.title_l'))
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .width('100%')
-      Text($r('app.string.workbench_tagline'))
-        .fontSize($r('app.float.body_s'))
-        .fontColor($r('app.color.text_secondary'))
-        .width('100%')
-
       Column({ space: 4 }) {
         this.buildNavButton(NavSection.SEND)
         this.buildNavButton(NavSection.RECEIVE)
@@ -717,7 +885,8 @@ export struct AppShell {
     .padding(16)
     .width(this.breakpoint === 'lg' ? 220 : 188)
     .height('100%')
-    .backgroundColor($r('app.color.panel_surface'))
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: { right: 1 }, color: $r('app.color.glass_edge') })
   }
 
   @Builder
@@ -731,7 +900,7 @@ export struct AppShell {
       Blank()
     }
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-    .backgroundColor(this.activeSection === section ? $r('app.color.selected_surface') : Color.Transparent)
+    .backgroundColor(this.activeSection === section ? this.themeSelected : Color.Transparent)
     .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
       this.activeSection = section
@@ -739,30 +908,75 @@ export struct AppShell {
   }
 
   @Builder
+  private buildTransferMode(): void {
+    Row({ space: 4 }) {
+      Button('发送')
+        .type(ButtonType.Normal)
+        .layoutWeight(1)
+        .height(44)
+        .fontColor(this.activeSection === NavSection.SEND ? $r('app.color.text_primary') :
+          $r('app.color.text_secondary'))
+        .backgroundColor(this.activeSection === NavSection.SEND ? this.themeSelected : Color.Transparent)
+        .borderRadius($r('app.float.radius_s'))
+        .onClick(() => {
+          this.activeSection = NavSection.SEND
+        })
+      Button('接收')
+        .type(ButtonType.Normal)
+        .layoutWeight(1)
+        .height(44)
+        .fontColor(this.activeSection === NavSection.RECEIVE ? $r('app.color.text_primary') :
+          $r('app.color.text_secondary'))
+        .backgroundColor(this.activeSection === NavSection.RECEIVE ? this.themeSelected : Color.Transparent)
+        .borderRadius($r('app.float.radius_s'))
+        .onClick(() => {
+          this.activeSection = NavSection.RECEIVE
+        })
+    }
+    .padding(4)
+    .width('100%')
+    .backgroundColor($r('app.color.glass_surface'))
+    .backgroundBlurStyle(BlurStyle.Thin)
+    .border({ width: 1, color: $r('app.color.glass_edge') })
+    .borderRadius(12)
+    .shadow({ radius: 12, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 3 })
+  }
+
+  @Builder
   private buildBottomNav(): void {
     Row() {
       this.buildBottomButton(NavSection.SEND)
-      this.buildBottomButton(NavSection.RECEIVE)
       this.buildBottomButton(NavSection.DEVICES)
       this.buildBottomButton(NavSection.HISTORY)
       this.buildBottomButton(NavSection.SETTINGS)
     }
-    .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-    .backgroundColor($r('app.color.panel_surface'))
-    .border({ width: { top: 1 }, color: $r('app.color.divider') })
+    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+    .margin({ left: 12, right: 12, bottom: 10 })
+    .backgroundColor($r('app.color.glass_surface'))
+    .backgroundBlurStyle(BlurStyle.Thin)
+    .border({ width: 1, color: $r('app.color.glass_edge') })
+    .borderRadius(14)
+    .shadow({ radius: 18, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 5 })
   }
 
   @Builder
   private buildBottomButton(section: NavSection): void {
     Column({ space: 4 }) {
-      Text(this.navTitle(section))
-        .fontSize($r('app.float.caption'))
-        .fontColor(this.activeSection === section ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+      Text(section === NavSection.SEND ? '传输' : section === NavSection.HISTORY ? '记录' : this.navTitle(section))
+        .fontSize($r('app.float.body_s'))
+        .fontColor(this.activeSection === section ||
+          (section === NavSection.SEND && this.activeSection === NavSection.RECEIVE) ?
+          $r('app.color.text_primary') : $r('app.color.text_secondary'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .layoutWeight(1)
-    .padding({ top: 6, bottom: 6 })
+    .height(48)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor(this.activeSection === section ||
+      (section === NavSection.SEND && this.activeSection === NavSection.RECEIVE) ?
+      this.themeSelected : Color.Transparent)
+    .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
       this.activeSection = section
     })
@@ -772,15 +986,29 @@ export struct AppShell {
   private buildMainContent(): void {
     Scroll() {
       Column({ space: 14 }) {
-        Text(this.navTitle(this.activeSection))
-          .fontSize($r('app.float.title_xl'))
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .width('100%')
-        Text(this.sectionSubtitle())
-          .fontSize($r('app.float.body_s'))
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
+        Column({ space: 4 }) {
+          Text(this.activeSection === NavSection.SEND ? '发送文件' :
+            this.activeSection === NavSection.RECEIVE ? '接收文件' :
+            this.activeSection === NavSection.DEVICES ? '附近设备' :
+            this.activeSection === NavSection.HISTORY ? '传输记录' : '设置')
+            .fontSize($r('app.float.title_xl'))
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(1)
+            .width('100%')
+          Text(this.sectionSubtitle())
+            .fontSize($r('app.float.body_s'))
+            .fontColor($r('app.color.text_secondary'))
+            .maxLines(2)
+            .width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .height(94)
+        .width('100%')
+
+        if (this.activeSection === NavSection.SEND || this.activeSection === NavSection.RECEIVE) {
+          this.buildTransferMode()
+        }
 
         if (this.activeSection === NavSection.SEND) {
           this.buildSendSection()
@@ -794,10 +1022,12 @@ export struct AppShell {
           this.buildSettingsSection()
         }
       }
-      .padding({ left: 16, right: 16, top: 16, bottom: this.breakpoint === 'sm' ? 20 : 16 })
+      .justifyContent(FlexAlign.Start)
+      .padding({ left: 20, right: 20, top: 12, bottom: this.breakpoint === 'sm' ? 24 : 20 })
       .width('100%')
     }
-    .scrollBar(BarState.Auto)
+    .align(Alignment.Top)
+    .scrollBar(BarState.Off)
     .height('100%')
     .layoutWeight(1)
   }
@@ -821,6 +1051,7 @@ export struct AppShell {
     }
     .padding(14)
     .backgroundColor($r('app.color.subtle_warning'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
   }
 
@@ -837,8 +1068,9 @@ export struct AppShell {
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
     }
-    .padding(14)
-    .backgroundColor($r('app.color.panel_surface'))
+    .padding(16)
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
   }
 
@@ -860,7 +1092,7 @@ export struct AppShell {
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
       Progress({ value: panel.progress.progressRatio * 100, total: 100, type: ProgressType.Linear })
-        .color($r('app.color.accent'))
+        .color(this.themeAccent)
       if (panel.progress.bytesLabel.length > 0 || panel.progress.speedLabel.length > 0) {
         Row() {
           Text(panel.progress.bytesLabel)
@@ -878,10 +1110,15 @@ export struct AppShell {
           Text('票据：' + panel.progress.ticket)
             .fontSize($r('app.float.caption'))
             .fontColor($r('app.color.text_secondary'))
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
           Button('复制票据')
-            .type(ButtonType.Capsule)
-            .height(30)
+            .type(ButtonType.Normal)
+            .height(44)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor(this.themeSelected)
+            .borderRadius($r('app.float.radius_s'))
             .onClick(() => {
               this.copyCurrentTicket()
             })
@@ -896,25 +1133,57 @@ export struct AppShell {
       if ((panel.progress.stage === TransferStage.SHARING || panel.progress.stage === TransferStage.RECEIVING) &&
         panel.progress.transferId.length > 0) {
         Button('取消')
-          .type(ButtonType.Capsule)
-          .height(30)
+          .type(ButtonType.Normal)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .borderRadius($r('app.float.radius_s'))
           .onClick(() => {
             this.cancelTransfer(panel.progress.transferId)
           })
       }
     }
-    .padding(14)
-    .backgroundColor($r('app.color.panel_surface'))
+    .padding(16)
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
+    .shadow({ radius: 14, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 4 })
   }
 
   @Builder
   private buildSendSection(): void {
     Column({ space: 14 }) {
-      this.buildPlainPanel({ title: '发送清单', detail: '开始共享后会暂存所选内容，并递归计算真实字节数。' })
+      Text('选择内容')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
 
       if (this.sendItems.length === 0) {
-        this.buildPlainPanel({ title: '空态', detail: '尚未选择任何文件或文件夹。' })
+        Column({ space: 7 }) {
+          Text('+')
+            .fontSize(30)
+            .fontColor($r('app.color.text_primary'))
+          Text('添加文件')
+            .fontSize($r('app.float.body_m'))
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text('选择要发送的文件或照片')
+            .fontSize($r('app.float.body_s'))
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .justifyContent(FlexAlign.Center)
+        .padding(18)
+        .width('100%')
+        .height(132)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
+        .borderRadius($r('app.float.radius_s'))
+        .shadow({ radius: 14, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 4 })
+        .onClick(() => {
+          this.chooseFiles()
+        })
       } else {
         ForEach(this.sendItems, (item: TransferItem) => {
           Row() {
@@ -929,37 +1198,47 @@ export struct AppShell {
                 .fontSize($r('app.float.caption'))
                 .fontColor($r('app.color.text_secondary'))
                 .width('100%')
-              Text(item.uri)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('100%')
             }
             .layoutWeight(1)
             Button('移除')
-              .type(ButtonType.Capsule)
-              .height(28)
+              .type(ButtonType.Normal)
+              .height(44)
               .fontSize($r('app.float.caption'))
+              .fontColor($r('app.color.text_secondary'))
+              .backgroundColor(this.themeSelected)
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.sendItems = this.sendItems.filter((entry: TransferItem) => entry.id !== item.id)
                 this.markSelectedState()
               })
           }
           .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
         }, (item: TransferItem) => item.id)
       }
 
       Row({ space: 8 }) {
-        Button('选择文件')
+        Button('文件')
+          .type(ButtonType.Normal)
           .layoutWeight(1)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
+          .borderRadius($r('app.float.radius_s'))
           .onClick(() => {
             this.chooseFiles()
           })
-        Button('选择文件夹（能力可用时）')
+        Button('文件夹')
+          .type(ButtonType.Normal)
           .layoutWeight(1)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
+          .borderRadius($r('app.float.radius_s'))
           .enabled(this.folderSelectionSupported)
           .onClick(() => {
             this.chooseFolder()
@@ -968,19 +1247,68 @@ export struct AppShell {
 
       Row({ space: 8 }) {
         Button('清空')
+          .type(ButtonType.Normal)
           .layoutWeight(1)
+          .height(44)
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
+          .borderRadius($r('app.float.radius_s'))
+          .enabled(this.sendItems.length > 0)
           .onClick(() => {
             this.clearSendItems()
           })
         Button('开始共享')
+          .type(ButtonType.Normal)
           .layoutWeight(1)
+          .height(44)
+          .fontColor(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING ?
+            this.themeActionText : $r('app.color.text_secondary'))
+          .backgroundColor(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING ?
+            this.themeAccent : this.themeSelected)
+          .border({ width: this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING &&
+            this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+          .borderRadius($r('app.float.radius_s'))
           .enabled(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING)
           .onClick(() => {
             this.startShare()
           })
       }
 
-      this.buildProgressPanel({ progress: this.sendState })
+      if (this.sendState.stage !== TransferStage.IDLE) {
+        this.buildProgressPanel({ progress: this.sendState })
+      }
+
+      if (this.sendState.stage !== TransferStage.SHARING) {
+        Row({ space: 10 }) {
+          Column({ space: 4 }) {
+            Text('附近设备')
+              .fontSize($r('app.float.body_m'))
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            Text(this.nearbyDevices.length > 0 ? this.nearbyDevices[0].name :
+              this.pairedDevices.length > 0 ? this.pairedDevices[0].name : '暂未发现设备')
+              .fontSize($r('app.float.body_s'))
+              .fontColor($r('app.color.text_secondary'))
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+          Button('查看设备')
+            .type(ButtonType.Normal)
+            .height(44)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor(this.themeSelected)
+            .borderRadius($r('app.float.radius_s'))
+            .onClick(() => {
+              this.activeSection = NavSection.DEVICES
+            })
+        }
+        .padding(14)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
+        .borderRadius($r('app.float.radius_s'))
+        .shadow({ radius: 12, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 3 })
+      }
 
       if (this.sendState.stage === TransferStage.SHARING && this.sendState.ticket.length > 0) {
         Text('发送到设备')
@@ -1008,15 +1336,20 @@ export struct AppShell {
             }
             .layoutWeight(1)
             Button('邀请')
-              .type(ButtonType.Capsule)
-              .height(30)
+              .type(ButtonType.Normal)
+              .height(44)
+              .fontColor(this.themeActionText)
+              .backgroundColor(this.themeAccent)
+              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+              .borderRadius($r('app.float.radius_s'))
               .enabled(device.pairingStatus === 'active')
               .onClick(() => {
                 this.inviteTransfer(device.id, true)
               })
           }
           .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
         }, (device: PairedDevice) => 'paired-' + device.id)
         ForEach(this.nearbyDevices, (device: NearbyDevice) => {
@@ -1033,14 +1366,19 @@ export struct AppShell {
             }
             .layoutWeight(1)
             Button('邀请')
-              .type(ButtonType.Capsule)
-              .height(30)
+              .type(ButtonType.Normal)
+              .height(44)
+              .fontColor(this.themeActionText)
+              .backgroundColor(this.themeAccent)
+              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.inviteTransfer(device.id, false)
               })
           }
           .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
         }, (device: NearbyDevice) => 'nearby-' + device.id)
       }
@@ -1068,19 +1406,31 @@ export struct AppShell {
             .width('100%')
           Row({ space: 8 }) {
             Button('接受')
+              .type(ButtonType.Normal)
               .layoutWeight(1)
+              .height(44)
+              .fontColor(this.themeActionText)
+              .backgroundColor(this.themeAccent)
+              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.respondToTransferInvite(true)
               })
             Button('拒绝')
+              .type(ButtonType.Normal)
               .layoutWeight(1)
+              .height(44)
+              .fontColor($r('app.color.text_primary'))
+              .backgroundColor(this.themeSelected)
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.respondToTransferInvite(false)
               })
           }
         }
         .padding(14)
-        .backgroundColor($r('app.color.panel_surface'))
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
       }
 
@@ -1088,9 +1438,15 @@ export struct AppShell {
         this.buildPlainPanel({ title: '邀请状态', detail: this.receiveInviteStatus })
       }
 
+      Text('分享票据')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
       TextArea({ text: this.receiveTicket, placeholder: $r('app.string.ticket_placeholder') })
-        .height(this.compactHeight() ? 88 : 120)
-        .backgroundColor($r('app.color.panel_surface'))
+        .height(this.compactHeight() ? 84 : 104)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
         .onChange((value: string) => {
           this.receiveTicket = value
@@ -1099,61 +1455,90 @@ export struct AppShell {
             '输入票据后可向发送方读取真实文件元数据。'
         })
 
-      this.buildPlainPanel({ title: '元数据预览', detail: this.receivePreviewTitle + '\n' + this.receivePreviewDetail })
       Button('解析元数据')
+        .type(ButtonType.Normal)
         .width('100%')
+        .height(44)
+        .fontColor($r('app.color.text_primary'))
+        .backgroundColor(this.themeSelected)
+        .borderRadius($r('app.float.radius_s'))
         .enabled(this.receiveTicket.trim().length > 0)
         .onClick(() => {
           this.parseReceiveMetadata()
         })
+      if (this.receiveTicket.trim().length > 0) {
+        this.buildPlainPanel({ title: '文件预览', detail: this.receivePreviewTitle + '\n' + this.receivePreviewDetail })
+      }
 
-      Column({ space: 6 }) {
-        Text('保存位置')
-          .fontSize($r('app.float.body_s'))
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-        this.buildPlainPanel({ title: '保存目标 URI', detail: this.receiveFolder.length > 0 ?
-          this.receiveFolder : '尚未选择保存位置' })
-        Button('选择保存位置')
-          .width('100%')
+      Row({ space: 10 }) {
+        Column({ space: 5 }) {
+          Text('保存位置')
+            .fontSize($r('app.float.body_m'))
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Text(this.receiveFolder.length > 0 ? this.receiveFolder : '尚未选择保存位置')
+            .fontSize($r('app.float.body_s'))
+            .fontColor($r('app.color.text_secondary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+        Button('选择位置')
+          .type(ButtonType.Normal)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .borderRadius($r('app.float.radius_s'))
           .onClick(() => {
             this.chooseReceiveTarget()
           })
       }
+      .padding(14)
+      .backgroundColor($r('app.color.glass_surface'))
+      .border({ width: 1, color: $r('app.color.glass_edge') })
+      .borderRadius($r('app.float.radius_s'))
 
-      Row({ space: 8 }) {
-        Button('开始接收')
-          .layoutWeight(1)
-          .enabled(this.receiveTicket.trim().length > 0 && this.receiveFolder.length > 0 &&
-            this.receiveState.stage !== TransferStage.RECEIVING)
-          .onClick(() => {
-            this.startReceive()
-          })
-        Button('清空目标')
-          .layoutWeight(1)
-          .onClick(() => {
-            this.receiveFolder = ''
-            this.resetReceiveState()
-          })
+      Button('开始接收')
+        .type(ButtonType.Normal)
+        .width('100%')
+        .height(44)
+        .fontColor(this.receiveTicket.trim().length > 0 && this.receiveFolder.length > 0 &&
+          this.receiveState.stage !== TransferStage.RECEIVING ?
+          this.themeActionText : $r('app.color.text_secondary'))
+        .backgroundColor(this.receiveTicket.trim().length > 0 && this.receiveFolder.length > 0 &&
+          this.receiveState.stage !== TransferStage.RECEIVING ?
+          this.themeAccent : this.themeSelected)
+        .border({ width: this.receiveTicket.trim().length > 0 && this.receiveFolder.length > 0 &&
+          this.receiveState.stage !== TransferStage.RECEIVING && this.themeActionText === '#000000' ? 1 : 0,
+          color: '#000000' })
+        .borderRadius($r('app.float.radius_s'))
+        .enabled(this.receiveTicket.trim().length > 0 && this.receiveFolder.length > 0 &&
+          this.receiveState.stage !== TransferStage.RECEIVING)
+        .onClick(() => {
+          this.startReceive()
+        })
+      Button('清空目标')
+        .type(ButtonType.Normal)
+        .height(44)
+        .fontColor($r('app.color.text_secondary'))
+        .backgroundColor(Color.Transparent)
+        .borderRadius($r('app.float.radius_s'))
+        .enabled(this.receiveFolder.length > 0)
+        .onClick(() => {
+          this.receiveFolder = ''
+          this.resetReceiveState()
+        })
+
+      if (this.receiveState.stage !== TransferStage.IDLE) {
+        this.buildProgressPanel({ progress: this.receiveState })
       }
-
-      this.buildProgressPanel({ progress: this.receiveState })
     }
   }
 
   @Builder
   private buildDevicesSection(): void {
     Column({ space: 12 }) {
-      this.buildNoticePanel({
-        title: 'Iroh NodeService',
-        status: '状态：' + this.nodeSnapshot.status,
-        detail: this.nodeSnapshot.message + '\n设备名：' +
-          (this.nodeSnapshot.deviceName.length > 0 ? this.nodeSnapshot.deviceName : '尚未读取') +
-          '\nEndpoint：' + (this.nodeSnapshot.endpointId.length > 0 ? this.nodeSnapshot.endpointId : '尚未读取') +
-          '\n网络：' + (this.nodeSnapshot.networkReady ? '已就绪' : '未就绪')
-      })
-      this.buildPlainPanel({ title: '节点操作状态', detail: this.nodeOperationStatus })
-
       if (this.hasPendingNearbyPairRequest) {
         Column({ space: 8 }) {
           Text('附近配对请求')
@@ -1171,67 +1556,49 @@ export struct AppShell {
             .width('100%')
           Row({ space: 8 }) {
             Button('接受')
+              .type(ButtonType.Normal)
               .layoutWeight(1)
+              .height(44)
+              .fontColor(this.themeActionText)
+              .backgroundColor(this.themeAccent)
+              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.respondToNearbyPair(true, false)
               })
             Button('拒绝')
+              .type(ButtonType.Normal)
               .layoutWeight(1)
+              .height(44)
+              .fontColor($r('app.color.text_primary'))
+              .backgroundColor(this.themeSelected)
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.respondToNearbyPair(false, false)
               })
           }
           Button('拒绝并阻止')
+            .type(ButtonType.Normal)
             .width('100%')
+            .height(44)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor(this.themeSelected)
+            .borderRadius($r('app.float.radius_s'))
             .onClick(() => {
               this.respondToNearbyPair(false, true)
             })
         }
         .padding(14)
-        .backgroundColor($r('app.color.panel_surface'))
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
       }
 
-      Text('配对票据')
-        .fontSize($r('app.float.body_m'))
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .width('100%')
-      this.buildPlainPanel({ title: '5 分钟接待票据', detail: this.nodeSnapshot.pairingTicket.length > 0 ?
-        this.nodeSnapshot.pairingTicket : '尚未开始配对接待。' })
-      Row({ space: 8 }) {
-        Button('生成票据')
-          .layoutWeight(1)
-          .enabled(this.nodeSnapshot.status === 'ready')
-          .onClick(() => {
-            this.createPairingTicket()
-          })
-        Button('停止接待')
-          .layoutWeight(1)
-          .enabled(this.nodeSnapshot.pairingTicket.length > 0)
-          .onClick(() => {
-            this.stopPairingHost()
-          })
+      if (this.nodeOperationStatus.length > 0) {
+        this.buildPlainPanel({ title: '设备状态', detail: this.nodeOperationStatus })
       }
-      Button('复制配对票据')
-        .width('100%')
-        .enabled(this.nodeSnapshot.pairingTicket.length > 0)
-        .onClick(() => {
-          this.copyPairingTicket()
-        })
-      TextArea({ text: this.pairingJoinTicket, placeholder: '粘贴另一台设备生成的配对票据' })
-        .height(this.compactHeight() ? 72 : 88)
-        .backgroundColor($r('app.color.panel_surface'))
-        .borderRadius($r('app.float.radius_s'))
-        .onChange((value: string) => {
-          this.pairingJoinTicket = value
-        })
-      Button('加入配对')
-        .width('100%')
-        .enabled(this.pairingJoinTicket.trim().length > 0 && this.nodeSnapshot.status === 'ready')
-        .onClick(() => {
-          this.joinPairing()
-        })
+
+      this.buildNearbyDevices()
 
       Text('已配对设备')
         .fontSize($r('app.float.body_m'))
@@ -1239,7 +1606,7 @@ export struct AppShell {
         .fontColor($r('app.color.text_primary'))
         .width('100%')
       if (this.pairedDevices.length === 0) {
-        this.buildPlainPanel({ title: '空态', detail: 'Iroh NodeService 当前没有已配对设备。' })
+        this.buildPlainPanel({ title: '还没有已配对设备', detail: '可从附近设备中选择并配对。' })
       } else {
         ForEach(this.pairedDevices, (device: PairedDevice) => {
           Row() {
@@ -1256,58 +1623,143 @@ export struct AppShell {
             }
             .layoutWeight(1)
             Button('忘记')
-              .type(ButtonType.Capsule)
-              .height(30)
+              .type(ButtonType.Normal)
+              .height(44)
+              .fontColor($r('app.color.text_primary'))
+              .backgroundColor(this.themeSelected)
+              .borderRadius($r('app.float.radius_s'))
               .onClick(() => {
                 this.forgetPairedDevice(device.id)
               })
           }
           .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
         }, (device: PairedDevice) => device.id)
       }
 
-      Text('附近设备')
+      Text('配对票据')
         .fontSize($r('app.float.body_m'))
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.text_primary'))
         .width('100%')
-      if (this.nearbyDevices.length === 0) {
-        this.buildPlainPanel({ title: '空态', detail: 'Iroh NodeService 当前没有发现附近设备。' })
-      } else {
-        ForEach(this.nearbyDevices, (device: NearbyDevice) => {
-          Row() {
-            Column({ space: 2 }) {
-              Text(device.name)
-                .fontSize($r('app.float.body_m'))
-                .fontColor($r('app.color.text_primary'))
-                .width('100%')
-              Text(device.deviceType + (device.os.length > 0 ? ' · ' + device.os : '') +
-                ' · ' + device.signalLabel + ' · ' + device.status)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .width('100%')
-              Text(device.fingerprint)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('100%')
-            }
-            .layoutWeight(1)
-            Button('配对')
-              .type(ButtonType.Capsule)
-              .height(30)
-              .onClick(() => {
-                this.triggerPair(device.id)
-              })
-          }
-          .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+      this.buildPlainPanel({ title: '5 分钟接待票据', detail: this.nodeSnapshot.pairingTicket.length > 0 ?
+        this.nodeSnapshot.pairingTicket : '尚未开始配对接待。' })
+      Row({ space: 8 }) {
+        Button('生成票据')
+          .type(ButtonType.Normal)
+          .layoutWeight(1)
+          .height(44)
+          .fontColor(this.themeActionText)
+          .backgroundColor(this.themeAccent)
+          .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
           .borderRadius($r('app.float.radius_s'))
-        }, (device: NearbyDevice) => device.id)
+          .enabled(this.nodeSnapshot.status === 'ready')
+          .onClick(() => {
+            this.createPairingTicket()
+          })
+        Button('停止接待')
+          .type(ButtonType.Normal)
+          .layoutWeight(1)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .borderRadius($r('app.float.radius_s'))
+          .enabled(this.nodeSnapshot.pairingTicket.length > 0)
+          .onClick(() => {
+            this.stopPairingHost()
+          })
       }
+      Button('复制配对票据')
+        .type(ButtonType.Normal)
+        .width('100%')
+        .height(44)
+        .fontColor($r('app.color.text_primary'))
+        .backgroundColor(this.themeSelected)
+        .borderRadius($r('app.float.radius_s'))
+        .enabled(this.nodeSnapshot.pairingTicket.length > 0)
+        .onClick(() => {
+          this.copyPairingTicket()
+        })
+      TextArea({ text: this.pairingJoinTicket, placeholder: '粘贴另一台设备生成的配对票据' })
+        .height(this.compactHeight() ? 72 : 88)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
+        .borderRadius($r('app.float.radius_s'))
+        .onChange((value: string) => {
+          this.pairingJoinTicket = value
+        })
+      Button('加入配对')
+        .type(ButtonType.Normal)
+        .width('100%')
+        .height(44)
+        .fontColor(this.themeActionText)
+        .backgroundColor(this.themeAccent)
+        .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+        .borderRadius($r('app.float.radius_s'))
+        .enabled(this.pairingJoinTicket.trim().length > 0 && this.nodeSnapshot.status === 'ready')
+        .onClick(() => {
+          this.joinPairing()
+        })
+
+      this.buildNoticePanel({
+        title: '连接状态',
+        status: '状态：' + this.nodeSnapshot.status,
+        detail: this.nodeSnapshot.message + '\n设备名：' +
+          (this.nodeSnapshot.deviceName.length > 0 ? this.nodeSnapshot.deviceName : '尚未读取') +
+          '\nEndpoint：' + (this.nodeSnapshot.endpointId.length > 0 ? this.nodeSnapshot.endpointId : '尚未读取') +
+          '\n网络：' + (this.nodeSnapshot.networkReady ? '已就绪' : '未就绪')
+      })
+    }
+  }
+
+  @Builder
+  private buildNearbyDevices(): void {
+    Text('附近设备')
+      .fontSize($r('app.float.body_m'))
+      .fontWeight(FontWeight.Medium)
+      .fontColor($r('app.color.text_primary'))
+      .width('100%')
+    if (this.nearbyDevices.length === 0) {
+      this.buildPlainPanel({ title: '附近暂无设备', detail: '发现其他设备后，会显示在这里。' })
+    } else {
+      ForEach(this.nearbyDevices, (device: NearbyDevice) => {
+        Row() {
+          Column({ space: 2 }) {
+            Text(device.name)
+              .fontSize($r('app.float.body_m'))
+              .fontColor($r('app.color.text_primary'))
+              .width('100%')
+            Text(device.deviceType + (device.os.length > 0 ? ' · ' + device.os : '') +
+              ' · ' + device.signalLabel + ' · ' + device.status)
+              .fontSize($r('app.float.caption'))
+              .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+            Text(device.fingerprint)
+              .fontSize($r('app.float.caption'))
+              .fontColor($r('app.color.text_secondary'))
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+          }
+          .layoutWeight(1)
+          Button('配对')
+            .type(ButtonType.Normal)
+            .height(44)
+            .fontColor(this.themeActionText)
+            .backgroundColor(this.themeAccent)
+            .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+            .borderRadius($r('app.float.radius_s'))
+            .onClick(() => {
+              this.triggerPair(device.id)
+            })
+        }
+        .padding(12)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
+        .borderRadius($r('app.float.radius_s'))
+      }, (device: NearbyDevice) => device.id)
     }
   }
 
@@ -1315,7 +1767,7 @@ export struct AppShell {
   private buildHistorySection(): void {
     Column({ space: 12 }) {
       if (this.historyEntries.length === 0) {
-        this.buildPlainPanel({ title: '空态', detail: '尚无真实传输历史。只有发送完成或接收内容成功导出后才会落盘记录。' })
+        this.buildPlainPanel({ title: '还没有传输记录', detail: '完成发送或接收后，记录会显示在这里。' })
       } else {
         ForEach(this.historyEntries, (entry: HistoryEntry) => {
           Column({ space: 4 }) {
@@ -1340,7 +1792,8 @@ export struct AppShell {
               .width('100%')
           }
           .padding(12)
-          .backgroundColor($r('app.color.panel_surface'))
+          .backgroundColor($r('app.color.glass_surface'))
+          .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
         }, (entry: HistoryEntry) => entry.id)
       }
@@ -1353,14 +1806,51 @@ export struct AppShell {
       if (this.nodeOperationStatus.length > 0) {
         this.buildPlainPanel({ title: '节点操作状态', detail: this.nodeOperationStatus })
       }
+      Text('传输')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      this.buildToggleRow({ label: '后台恢复传输', enabled: this.settings.resumeInBackground,
+        onToggleChanged: (value: boolean) => {
+          this.updateResumeInBackground(value)
+        }
+      })
+      Row() {
+        Column({ space: 2 }) {
+          Text('后台通知')
+            .fontSize($r('app.float.body_m'))
+            .fontColor($r('app.color.text_primary'))
+          Text(this.notificationEnabled ? '已开启' : '未开启')
+            .fontSize($r('app.float.caption'))
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Button('开启通知')
+          .type(ButtonType.Normal)
+          .height(44)
+          .fontColor(this.themeActionText)
+          .backgroundColor(this.themeAccent)
+          .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
+          .borderRadius($r('app.float.radius_s'))
+          .enabled(!this.notificationEnabled)
+          .onClick(() => {
+            this.enableNotifications()
+          })
+      }
+      .padding(12)
+      .backgroundColor($r('app.color.glass_surface'))
+      .border({ width: 1, color: $r('app.color.glass_edge') })
+      .borderRadius($r('app.float.radius_s'))
+      Text('设备与连接')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
       this.buildSettingField({ label: '设备名', value: this.settings.deviceName, placeholder: '设备名',
         onValueChanged: (value: string) => {
           this.updateDeviceName(value)
-        }
-      })
-      this.buildSettingField({ label: '主题', value: this.settings.theme, placeholder: '主题',
-        onValueChanged: (value: string) => {
-          this.updateTheme(value)
         }
       })
       this.buildToggleRow({ label: '可发现性', enabled: this.settings.discoverable,
@@ -1383,33 +1873,261 @@ export struct AppShell {
           this.updateDnsOrigin(value)
         }
       })
-      this.buildToggleRow({ label: '后台恢复传输', enabled: this.settings.resumeInBackground,
-        onToggleChanged: (value: boolean) => {
-          this.updateResumeInBackground(value)
-        }
-      })
-      Row() {
-        Column({ space: 2 }) {
-          Text('后台通知')
-            .fontSize($r('app.float.body_m'))
+      Text('外观')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      this.buildThemeColorSection()
+      this.buildDisplayModeSection()
+      this.buildPlainPanel({ title: '关于', detail: this.settings.about })
+      Button('方案预览')
+        .height(44)
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
+        .borderRadius($r('app.float.radius_s'))
+        .fontColor($r('app.color.text_secondary'))
+        .onClick(() => {
+          this.showDesignPreview = true
+        })
+    }
+  }
+
+  @Builder
+  private buildDisplayModeSection(): void {
+    Column({ space: 12 }) {
+      Text('显示模式')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      Row({ space: 4 }) {
+        ForEach(['跟随系统', '浅色', '深色'], (mode: string) => {
+          Button(mode)
+            .type(ButtonType.Normal)
+            .layoutWeight(1)
+            .height(44)
             .fontColor($r('app.color.text_primary'))
-          Text(this.notificationEnabled ? '已开启' : '未开启')
-            .fontSize($r('app.float.caption'))
-            .fontColor($r('app.color.text_secondary'))
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        Button('开启通知')
-          .enabled(!this.notificationEnabled)
+            .backgroundColor(this.settings.theme === mode ? this.themeSelected : Color.Transparent)
+            .borderRadius($r('app.float.radius_s'))
+            .onClick(() => {
+              this.updateDisplayMode(mode)
+            })
+        }, (mode: string) => mode)
+      }
+      .padding(4)
+      .width('100%')
+      .backgroundColor(this.themeTint)
+      .borderRadius($r('app.float.radius_s'))
+    }
+    .padding(16)
+    .width('100%')
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
+    .borderRadius($r('app.float.radius_s'))
+  }
+
+  @Builder
+  private buildThemeColorSection(): void {
+    Column({ space: 10 }) {
+      Text('主题色')
+        .fontSize($r('app.float.body_m'))
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+      Row({ space: 10 }) {
+        Row() {}
+          .width(38)
+          .height(38)
+          .backgroundColor(this.themeAccent)
+          .borderRadius(19)
+        Text(this.themeAccent)
+          .fontSize($r('app.float.body_s'))
+          .fontColor($r('app.color.text_secondary'))
+        Blank()
+        Button('选择颜色')
+          .type(ButtonType.Normal)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .borderRadius($r('app.float.radius_s'))
           .onClick(() => {
-            this.enableNotifications()
+            this.openColorPicker()
           })
       }
-      .padding(12)
-      .backgroundColor($r('app.color.panel_surface'))
-      .borderRadius($r('app.float.radius_s'))
-      this.buildPlainPanel({ title: '关于', detail: this.settings.about })
+      .width('100%')
     }
+    .padding(16)
+    .width('100%')
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
+    .borderRadius($r('app.float.radius_s'))
+    .shadow({ radius: 12, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 3 })
+  }
+
+  @Builder
+  private buildColorPickerModal(): void {
+    Column() {
+      Column({ space: 16 }) {
+        Row() {
+          Text('选择主题色')
+            .fontSize($r('app.float.title_l'))
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_primary'))
+          Blank()
+          Text(this.pickerPreview)
+            .fontSize($r('app.float.body_s'))
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+
+        Row({ space: 9 }) {
+          Stack({ alignContent: Alignment.TopStart }) {
+            Row() {}
+              .width('100%')
+              .height(224)
+              .linearGradient({
+                angle: 90,
+                colors: [
+                  [0xFFFF0000, 0], [0xFFFFFF00, 1 / 6], [0xFF00FF00, 2 / 6],
+                  [0xFF00FFFF, 3 / 6], [0xFF0000FF, 4 / 6], [0xFFFF00FF, 5 / 6], [0xFFFF0000, 1]
+                ]
+              })
+            Row() {}
+              .width('100%')
+              .height(224)
+              .linearGradient({ angle: 180, colors: [[Color.Transparent, 0], [Color.White, 1]] })
+            Row() {}
+              .width(16)
+              .height(16)
+              .backgroundColor(this.pickerBaseColor)
+              .border({ width: 2, color: Color.White })
+              .borderRadius(8)
+              .position({
+                x: Math.max(0, Math.min(this.pickerPlaneWidth - 16, this.pickerHue * this.pickerPlaneWidth - 8)),
+                y: Math.max(0, Math.min(208, this.pickerWhiteness * 224 - 8))
+              })
+              .hitTestBehavior(HitTestMode.None)
+          }
+          .layoutWeight(1)
+          .height(224)
+          .borderRadius(6)
+          .clip(true)
+          .onAreaChange((oldValue: Area, newValue: Area) => {
+            this.pickerPlaneWidth = Number(newValue.width)
+          })
+          .onTouch((event: TouchEvent) => {
+            this.updatePickerPlane(event)
+          })
+          Row() {}
+            .width(36)
+            .height(224)
+            .backgroundColor(this.pickerPreview)
+            .borderRadius(5)
+          Stack({ alignContent: Alignment.TopStart }) {
+            Row() {}
+              .width(22)
+              .height(224)
+              .linearGradient({ angle: 180, colors: [[this.pickerBaseColor, 0], [Color.Black, 1]] })
+            Row() {}
+              .width(22)
+              .height(8)
+              .backgroundColor(Color.White)
+              .border({ width: 1, color: Color.Black })
+              .borderRadius(4)
+              .position({ y: Math.max(0, Math.min(216, (1 - this.pickerBrightness) * 224 - 4)) })
+              .hitTestBehavior(HitTestMode.None)
+          }
+          .width(22)
+          .height(224)
+          .borderRadius(6)
+          .clip(true)
+          .onTouch((event: TouchEvent) => {
+            this.updatePickerBrightness(event)
+          })
+        }
+        .width('100%')
+
+        Row({ space: 8 }) {
+          this.buildPickerRgbField({ label: 'R', value: this.redInput, onValueChanged: (value: string): void => {
+            this.redInput = value
+            this.previewRgbInput()
+          } })
+          this.buildPickerRgbField({ label: 'G', value: this.greenInput, onValueChanged: (value: string): void => {
+            this.greenInput = value
+            this.previewRgbInput()
+          } })
+          this.buildPickerRgbField({ label: 'B', value: this.blueInput, onValueChanged: (value: string): void => {
+            this.blueInput = value
+            this.previewRgbInput()
+          } })
+        }
+        .width('100%')
+        if (this.colorError.length > 0) {
+          Text(this.colorError)
+            .fontSize($r('app.float.body_s'))
+            .fontColor($r('app.color.critical'))
+            .width('100%')
+        }
+        Row({ space: 10 }) {
+          Button('取消')
+            .type(ButtonType.Normal)
+            .layoutWeight(1)
+            .height(44)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.selected_surface'))
+            .onClick(() => {
+              this.showColorPicker = false
+            })
+          Button('确定')
+            .type(ButtonType.Normal)
+            .layoutWeight(1)
+            .height(44)
+            .fontColor(this.themeActionText)
+            .backgroundColor(this.themeAccent)
+            .onClick(() => {
+              this.saveRgbColor()
+            })
+        }
+        .width('100%')
+      }
+      .padding(18)
+      .width('90%')
+      .backgroundColor($r('app.color.glass_surface'))
+      .backgroundBlurStyle(BlurStyle.Thin)
+      .border({ width: 1, color: $r('app.color.glass_edge') })
+      .borderRadius(12)
+      .shadow({ radius: 18, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 5 })
+      .translate({ y: this.pickerEditing ? -120 : 0 })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#99000000')
+  }
+
+  @Builder
+  private buildPickerRgbField(field: PickerRgbField): void {
+    Column({ space: 5 }) {
+      Text(field.label)
+        .fontSize($r('app.float.body_s'))
+        .fontColor($r('app.color.text_secondary'))
+      TextInput({ text: field.value, placeholder: '0–255' })
+        .type(InputType.Number)
+        .maxLength(3)
+        .height(44)
+        .backgroundColor($r('app.color.panel_surface'))
+        .border({ width: 1, color: $r('app.color.divider') })
+        .borderRadius($r('app.float.radius_s'))
+        .onFocus(() => {
+          this.pickerEditing = true
+        })
+        .onBlur(() => {
+          this.pickerEditing = false
+        })
+        .onChange(field.onValueChanged)
+    }
+    .layoutWeight(1)
   }
 
   @Builder
@@ -1420,7 +2138,8 @@ export struct AppShell {
         .fontColor($r('app.color.text_secondary'))
         .width('100%')
       TextInput({ text: field.value, placeholder: field.placeholder })
-        .backgroundColor($r('app.color.panel_surface'))
+        .backgroundColor($r('app.color.glass_surface'))
+        .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
         .onChange((nextValue: string) => {
           field.onValueChanged(nextValue)
@@ -1443,12 +2162,14 @@ export struct AppShell {
       }
       .layoutWeight(1)
       Toggle({ type: ToggleType.Switch, isOn: toggle.enabled })
+        .selectedColor(this.themeAccent)
         .onChange((value: boolean) => {
           toggle.onToggleChanged(value)
         })
     }
     .padding(12)
-    .backgroundColor($r('app.color.panel_surface'))
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
   }
 
@@ -1469,12 +2190,17 @@ export struct AppShell {
     .padding(16)
     .width(240)
     .height('100%')
-    .backgroundColor($r('app.color.context_surface'))
+    .backgroundColor($r('app.color.glass_surface'))
+    .border({ width: { left: 1 }, color: $r('app.color.glass_edge') })
   }
 
   build() {
     Column() {
-      if (this.breakpoint === 'sm') {
+      if (this.showDesignPreview) {
+        DesignPreview({ onClose: (): void => {
+          this.showDesignPreview = false
+        } })
+      } else if (this.breakpoint === 'sm') {
         this.buildMainContent()
         this.buildBottomNav()
       } else if (this.breakpoint === 'md') {
@@ -1495,6 +2221,23 @@ export struct AppShell {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
+    .linearGradient({
+      angle: 155,
+      colors: [
+        [this.themeTint, 0],
+        [Color.Transparent, 0.55],
+        [this.themeTint, 1]
+      ]
+    })
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .bindContentCover(this.showColorPicker, this.buildColorPickerModal(), {
+      modalTransition: ModalTransition.ALPHA,
+      backgroundColor: Color.Transparent,
+      onDisappear: () => {
+        this.showColorPicker = false
+        this.pickerEditing = false
+      }
+    })
     .onAreaChange((oldValue: Area, newValue: Area) => {
       this.updateBreakpoint(Number(newValue.width), Number(newValue.height))
     })

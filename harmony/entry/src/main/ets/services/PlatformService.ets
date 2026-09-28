@@ -1,8 +1,9 @@
-import { common } from '@kit.AbilityKit'
+import { common, ConfigurationConstant } from '@kit.AbilityKit'
 import { preferences } from '@kit.ArkData'
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit'
 import { fileIo, picker, fileShare } from '@kit.CoreFileKit'
 import { display } from '@kit.ArkUI'
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
   AppSettings,
   DisplayState,
@@ -22,6 +23,7 @@ const PERSISTED_URIS_KEY: string = 'persisted_uris'
 interface StoredSettings {
   deviceName: string
   theme: string
+  accentColor?: string
   discoverable: boolean
   defaultRelay: string
   defaultDiscovery: string
@@ -112,6 +114,9 @@ export class PlatformService {
       let stored: StoredSettings = JSON.parse(raw) as StoredSettings
       next.deviceName = stored.deviceName ?? next.deviceName
       next.theme = stored.theme ?? next.theme
+      if (typeof stored.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(stored.accentColor)) {
+        next.accentColor = stored.accentColor.toUpperCase()
+      }
       next.discoverable = stored.discoverable ?? next.discoverable
       next.defaultRelay = stored.defaultRelay ?? next.defaultRelay
       next.defaultDiscovery = stored.defaultDiscovery ?? next.defaultDiscovery
@@ -128,6 +133,7 @@ export class PlatformService {
     let stored: StoredSettings = {
       deviceName: settings.deviceName,
       theme: settings.theme,
+      accentColor: settings.accentColor,
       discoverable: settings.discoverable,
       defaultRelay: settings.defaultRelay,
       defaultDiscovery: settings.defaultDiscovery,
@@ -388,6 +394,38 @@ export class PlatformService {
   async saveSettings(settings: AppSettings): Promise<AppSettings> {
     this.writeStringValue(SETTINGS_KEY, this.serializeSettings(settings))
     return settings.clone()
+  }
+
+  applyDisplayMode(theme: string): void {
+    let context: common.UIAbilityContext | null = platformContext.getUIContext()
+    if (context === null) {
+      throw new Error('UIAbilityContext 不可用，无法切换显示模式。')
+    }
+    let colorMode: ConfigurationConstant.ColorMode = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET
+    if (theme === '浅色') {
+      colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+    } else if (theme === '深色') {
+      colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+    }
+    context.getApplicationContext().setColorMode(colorMode)
+    this.updateSystemBarAppearance(theme === '跟随系统' ? context.config.colorMode : colorMode)
+  }
+
+  updateSystemBarAppearance(colorMode?: ConfigurationConstant.ColorMode): void {
+    let stage = platformContext.getWindowStage()
+    if (stage === null) {
+      return
+    }
+    let contentColor: string = colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ?
+      '#F2F6F4' : '#21342C'
+    stage.getMainWindowSync().setWindowSystemBarProperties({
+      statusBarColor: '#00000000',
+      navigationBarColor: '#00000000',
+      statusBarContentColor: contentColor,
+      navigationBarContentColor: contentColor
+    }).catch((error: Error): void => {
+      hilog.error(0x0000, 'DashBeam', 'Failed to update system bars. Cause: %{public}s', error.message)
+    })
   }
 
   async loadHistory(): Promise<Array<HistoryEntry>> {

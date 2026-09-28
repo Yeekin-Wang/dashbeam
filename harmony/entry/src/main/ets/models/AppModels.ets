@@ -128,6 +128,7 @@ export class HistoryEntry {
 export class AppSettings {
   deviceName: string = 'DashBeam Harmony'
   theme: string = '跟随系统'
+  accentColor: string = '#226250'
   discoverable: boolean = true
   defaultRelay: string = ''
   defaultDiscovery: string = ''
@@ -139,6 +140,7 @@ export class AppSettings {
     let next: AppSettings = new AppSettings()
     next.deviceName = this.deviceName
     next.theme = this.theme
+    next.accentColor = this.accentColor
     next.discoverable = this.discoverable
     next.defaultRelay = this.defaultRelay
     next.defaultDiscovery = this.defaultDiscovery

@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>DashBeam · HarmonyOS UX 方案</title>
+  <link rel="icon" href="../../frontend/public/favicon-96x96.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { font-family: 'DM Sans', 'Noto Sans SC', sans-serif; color: #24312f; background: #eef1ee; }
+    body { margin: 0; }
+    * { box-sizing: border-box; }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #f0644b; outline-offset: 3px; }
+    .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .icon.sm { width: 15px; height: 15px; }
+    .icon.lg { width: 27px; height: 27px; }
+    .review { max-width: 1600px; margin: auto; padding: 28px clamp(16px, 3vw, 48px) 48px; }
+    .review-header, .review-brand, .review-meta, .review-titleline, .concept-head, .swatches, .review-foot { display: flex; align-items: center; }
+    .review-header { justify-content: space-between; gap: 18px; padding-bottom: 30px; border-bottom: 1px solid #d8dfd9; }
+    .review-brand { gap: 12px; font-size: 14px; font-weight: 700; letter-spacing: 0; }
+    .review-mark, .app-mark { display: grid; place-items: center; overflow: hidden; background: #182523; }
+    .review-mark { width: 34px; height: 34px; border-radius: 9px; }
+    .review-mark img, .app-mark img { width: 100%; height: 100%; object-fit: contain; }
+    .review-brand span:last-child { color: #85928d; font-weight: 500; }
+    .review-meta { gap: 10px; color: #667770; font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+    .review-meta .live { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; color: #326b51; background: #dce9df; border-radius: 4px; letter-spacing: 0; text-transform: none; }
+    .live::before, .online-dot { content: ''; display: inline-block; width: 6px; height: 6px; background: #4dad75; border-radius: 50%; }
+    .review-intro { padding: 27px 0 25px; }
+    .review-kicker { color: #707e76; font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+    .review-titleline { justify-content: space-between; gap: 28px; align-items: end; margin-top: 7px; }
+    .review-titleline h1 { margin: 0; font-size: clamp(27px, 3vw, 43px); line-height: 1.15; font-weight: 700; letter-spacing: 0; }
+    .review-titleline p { max-width: 460px; margin: 0 0 3px; color: #67766e; font-size: 13px; line-height: 1.6; }
+    .mobile-chooser { display: none; }
+    .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 380px)); justify-content: center; gap: clamp(12px, 1.6vw, 24px); align-items: start; }
+    .concept { min-width: 0; animation: appear .55s both; }
+    .concept:nth-child(2) { animation-delay: .06s; }
+    .concept:nth-child(3) { animation-delay: .12s; }
+    .concept:nth-child(4) { animation-delay: .18s; }
+    .concept:nth-child(5) { animation-delay: .24s; }
+    @keyframes appear { from { opacity: 0; transform: translateY(13px); } to { opacity: 1; transform: translateY(0); } }
+    .concept-head { min-height: 68px; justify-content: space-between; gap: 6px; padding: 0 2px 10px; }
+    .concept-num { display: block; color: #829088; font-size: 11px; font-weight: 700; letter-spacing: 0; }
+    .concept-head h2 { margin: 2px 0 0; font-size: 18px; line-height: 1.3; font-weight: 700; }
+    .swatches { gap: 3px; flex: none; }
+    .swatches i { width: 11px; height: 11px; border: 1px solid #17221c22; border-radius: 50%; }
+    .concept-note { min-height: 35px; margin: 10px 2px 0; color: #6c7770; font-size: 11px; line-height: 1.5; }
+    .review-foot { gap: 7px; flex-wrap: wrap; margin-top: 26px; padding-top: 16px; border-top: 1px solid #d8dfd9; color: #76847c; font-size: 11px; }
+    .review-foot .icon { width: 14px; height: 14px; }
+
+    .phone { position: relative; width: 100%; height: min(660px, 68vh); min-height: 560px; overflow: hidden; border: 5px solid #1c2926; border-radius: 30px; background: var(--bg); color: var(--ink); box-shadow: 0 16px 38px #1a31251a, 0 2px 8px #1a312519; font-family: 'Noto Sans SC', 'DM Sans', sans-serif; isolation: isolate; }
+    .phone::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+    .phone button { -webkit-tap-highlight-color: transparent; }
+    .statusbar { position: relative; z-index: 2; height: 30px; padding: 8px 20px 0; display: flex; justify-content: space-between; align-items: center; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0; }
+    .status-icons { display: flex; align-items: center; gap: 6px; }
+    .status-icons .icon { width: 13px; height: 13px; stroke-width: 2.2; }
+    .status-icons .battery { width: 17px; height: 9px; border: 1.7px solid currentColor; border-radius: 2px; padding: 1px; position: relative; }
+    .status-icons .battery::before { content: ''; position: absolute; top: 2px; right: -4px; height: 3px; width: 2px; background: currentColor; border-radius: 0 1px 1px 0; }
+    .status-icons .battery::after { content: ''; display: block; height: 100%; width: 9px; background: currentColor; border-radius: 1px; }
+    .app-head { position: relative; z-index: 2; height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+    .app-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .app-mark { width: 27px; height: 27px; border-radius: 7px; flex: none; }
+    .app-identity strong { font-family: 'DM Sans', sans-serif; font-size: 16px; letter-spacing: 0; }
+    .icon-btn { width: 40px; height: 40px; padding: 0; border: none; border-radius: 7px; display: grid; place-items: center; color: inherit; background: transparent; }
+    .icon-btn:hover { background: #6e89861c; }
+    .screen { height: calc(100% - 161px); overflow-y: auto; padding: 10px 20px 20px; scrollbar-width: none; }
+    .screen::-webkit-scrollbar { display: none; }
+    .eyebrow { display: block; margin-bottom: 5px; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+    .hero { margin: 12px 0 19px; }
+    .hero h3 { margin: 0; font-size: clamp(26px, 2.3vw, 34px); line-height: 1.28; font-weight: 800; letter-spacing: 0; }
+    .hero p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .mode { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin-bottom: 17px; background: var(--mode-bg); border-radius: 9px; }
+    .mode button { min-height: 41px; border: none; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .mode button[aria-pressed='true'] { color: var(--mode-ink); background: var(--mode-active); box-shadow: 0 2px 6px #17292412; }
+    .panel { min-width: 0; }
+    .section-label { margin: 0 0 9px; font-size: 12px; font-weight: 700; }
+    .muted { color: var(--muted); }
+    .pick-zone { width: 100%; min-height: 142px; border: 1.5px dashed var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 17px; text-align: left; transition: transform .2s, border-color .2s; }
+    .pick-zone:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .pick-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 8px; color: var(--accent); background: var(--icon-bg); }
+    .pick-zone strong { display: block; margin-top: 12px; font-size: 13px; font-weight: 700; }
+    .pick-zone small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .file-actions { display: flex; gap: 8px; margin: 10px 0 0; }
+    .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 1px solid var(--line); border-radius: var(--radius); padding: 0 10px; background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 700; }
+    .secondary:hover { border-color: var(--accent); }
+    .file-list { list-style: none; margin: 11px 0 0; padding: 0; }
+    .file-list li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+    .file-list .icon { color: var(--accent); }
+    .file-list .filename { min-width: 0; flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .file-list .filesize { color: var(--muted); font-size: 10px; }
+    .primary { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 44px; padding: 9px 12px; margin-top: 14px; border: 0; border-radius: var(--radius); background: var(--accent); color: var(--primary-ink); font-size: 12px; font-weight: 700; transition: transform .18s, opacity .18s; }
+    .primary:hover:not(:disabled) { transform: translateY(-2px); }
+    .primary:disabled { opacity: .42; }
+    .nearby { margin-top: 21px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+    .section-heading .section-label { margin: 0; }
+    .text-action { min-height: 36px; border: 0; padding: 4px 0; display: inline-flex; gap: 3px; align-items: center; color: var(--accent); background: none; font-size: 10px; font-weight: 700; }
+    .device-row { width: 100%; display: flex; align-items: center; gap: 9px; min-height: 53px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--surface); color: var(--ink); text-align: left; }
+    .device-row + .device-row { margin-top: 7px; }
+    .device-glyph { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: var(--accent); background: var(--icon-bg); flex: none; }
+    .device-info { min-width: 0; flex: 1; }
+    .device-info strong, .device-info small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .device-info strong { font-size: 11px; }
+    .device-info small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .device-row > .icon { color: var(--muted); }
+    .field-label { display: block; margin-bottom: 7px; font-size: 11px; font-weight: 700; }
+    .ticket-input { display: block; width: 100%; min-height: 104px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); outline: none; background: var(--surface); color: var(--ink); font-size: 11px; line-height: 1.5; }
+    .ticket-input::placeholder { color: var(--muted); opacity: .76; }
+    .ticket-input:focus { border-color: var(--accent); }
+    .destination { display: flex; align-items: center; gap: 10px; padding: 12px 0; margin-top: 6px; border-bottom: 1px solid var(--line); }
+    .destination .icon { color: var(--accent); }
+    .destination span { flex: 1; font-size: 11px; font-weight: 700; }
+    .destination select { width: 80px; max-width: 40%; border: 0; background: transparent; color: var(--muted); text-align: right; font-size: 11px; cursor: pointer; }
+    .info-line { display: flex; align-items: flex-start; gap: 6px; margin: 13px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .info-line .icon { margin-top: 1px; }
+    .progress-card { padding: 17px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .progress-card .big-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 11px; color: var(--accent); background: var(--icon-bg); }
+    .progress-card h4 { margin: 15px 0 5px; font-size: 17px; line-height: 1.4; }
+    .progress-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+    .ticket-chip { display: flex; align-items: center; gap: 7px; margin-top: 16px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; }
+    .ticket-chip code { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ticket-chip button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; background: transparent; color: var(--accent); }
+    .progress-track { width: 100%; height: 5px; margin-top: 16px; overflow: hidden; border-radius: 4px; background: var(--line); }
+    .progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .3s ease; }
+    .progress-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .subsection { margin: 20px 0 10px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0; }
+    .history-item { display: flex; align-items: center; gap: 9px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+    .history-item .device-glyph { width: 34px; height: 34px; }
+    .history-item .device-info small { line-height: 1.4; }
+    .empty { padding: 27px 14px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; }
+    .empty .icon { color: var(--accent); }
+    .empty strong { display: block; margin: 8px 0 4px; font-size: 12px; }
+    .empty p { margin: 0; color: var(--muted); font-size: 10px; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 50px; border-bottom: 1px solid var(--line); font-size: 11px; }
+    .setting-row strong { font-size: 11px; }
+    .setting-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .setting-row input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent); }
+    .setting-row input[type='text'] { width: 100px; padding: 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); text-align: right; font-size: 11px; }
+    .bottom-nav { position: absolute; z-index: 3; inset: auto 0 0; height: 77px; display: grid; grid-template-columns: repeat(4, 1fr); align-items: start; padding: 8px 7px 14px; background: var(--nav-bg); border-top: 1px solid var(--nav-line); }
+    .bottom-nav::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 72px; height: 3px; border-radius: 5px; background: currentColor; opacity: .25; }
+    .bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0; height: 48px; padding: 3px 0; border: none; border-radius: 7px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 600; }
+    .bottom-nav button[aria-current='page'] { color: var(--accent); }
+    .bottom-nav button[aria-current='page'] .icon { stroke-width: 2.4; }
+    .toast { position: absolute; z-index: 4; bottom: 84px; left: 12px; right: 12px; padding: 10px 13px; border-radius: 7px; color: #fff; background: #22362f; box-shadow: 0 5px 18px #0004; text-align: center; font-size: 11px; }
+
+    .minimal { --bg: #fbfcfa; --surface: #fff; --ink: #212d2a; --muted: #788780; --line: #d9e1da; --accent: #245d4c; --primary-ink: #fff; --icon-bg: #e9f0e9; --mode-bg: #edf1ee; --mode-active: #fff; --mode-ink: #21372c; --nav-bg: #fff; --nav-line: #e6eae5; --radius: 7px; }
+    .minimal .hero { margin-top: 22px; }
+    .minimal .hero h3 { font-weight: 700; }
+    .minimal .pick-zone { border-style: solid; min-height: 135px; }
+    .minimal .pick-icon { border-radius: 50%; }
+    .minimal .primary { margin-top: 17px; }
+    .minimal .nearby { margin-top: 27px; }
+
+    .hybrid { --bg: #e7f2ec; --surface: #ffffffa1; --ink: #23332f; --muted: #506b61; --line: #ffffffdc; --accent: #226250; --primary-ink: #fff; --icon-bg: #e0eee7; --mode-bg: #ffffff8a; --mode-active: #fff; --mode-ink: #204e40; --nav-bg: #ffffffe0; --nav-line: #ffffffeb; --radius: 8px; }
+    .hybrid::before { background: linear-gradient(155deg, #d9ebe5 0%, #f7faf8 30%, #d6eae2 53%, #f7f8f3 78%, #dcebe7 100%); }
+    .hybrid .app-head { border-bottom: 1px solid #ffffffbd; }
+    .hybrid .hero { margin-top: 22px; }
+    .hybrid .hero h3 { font-weight: 700; }
+    .hybrid .mode, .hybrid .pick-zone, .hybrid .device-row, .hybrid .ticket-input, .hybrid .progress-card, .hybrid .empty { backdrop-filter: blur(18px) saturate(130%); -webkit-backdrop-filter: blur(18px) saturate(130%); }
+    .hybrid .mode { border: 1px solid #ffffffde; box-shadow: 0 5px 18px #50796812; }
+    .hybrid .pick-zone { min-height: 135px; border-style: solid; box-shadow: inset 0 1px #fff, 0 10px 24px #5273651c; }
+    .hybrid .pick-icon { border-radius: 50%; }
+    .hybrid .secondary { background: #ffffff84; }
+    .hybrid .primary { margin-top: 17px; }
+    .hybrid .nearby { margin-top: 27px; }
+    .hybrid .device-row { box-shadow: inset 0 1px #fff, 0 8px 18px #52736510; }
+    .hybrid .bottom-nav { margin: 0 9px 9px; bottom: 4px; height: 62px; padding-bottom: 4px; border: 1px solid var(--nav-line); border-radius: 14px; backdrop-filter: blur(26px) saturate(140%); -webkit-backdrop-filter: blur(26px) saturate(140%); box-shadow: 0 8px 25px #5273651f, inset 0 1px #fff; }
+    .hybrid .bottom-nav::after { bottom: -12px; }
+    .hybrid .bottom-nav button[aria-current='page'] { background: #ffffffa3; }
+    .concept[data-variant='hybrid'] .concept-num { color: #226250; }
+
+    .signal { --bg: #202a25; --surface: #2d3831; --ink: #f2f7ef; --muted: #b9cabc; --line: #627568; --accent: #86e5bb; --primary-ink: #162820; --icon-bg: #40584a; --mode-bg: #17241d; --mode-active: #86e5bb; --mode-ink: #162820; --nav-bg: #1b2720; --nav-line: #556c5b; --radius: 4px; }
+    .signal .app-head { border-bottom: 1px solid var(--line); }
+    .signal .hero { position: relative; margin: 8px 0 17px; padding: 12px 78px 18px 0; border-bottom: 1px solid var(--line); }
+    .signal .hero::after { content: ''; position: absolute; top: 20px; right: 5px; width: 62px; height: 50px; background: repeating-linear-gradient(90deg, #86e5bb 0 5px, transparent 5px 13px); clip-path: polygon(0 76%, 20% 76%, 20% 52%, 40% 52%, 40% 37%, 62% 37%, 62% 16%, 100% 16%, 100% 100%, 0 100%); opacity: .8; }
+    .signal .hero h3 { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; font-weight: 700; }
+    .signal .eyebrow, .signal .subsection { color: #addbbd; font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; }
+    .signal .mode { border: 1px solid var(--line); }
+    .signal .mode button[aria-pressed='true'] { box-shadow: none; }
+    .signal .nearby { margin: 0 0 16px; }
+    .signal .pick-zone { position: relative; min-height: 140px; border-style: solid; }
+    .signal .pick-zone::after { content: ''; position: absolute; top: 17px; right: 15px; width: 27px; height: 9px; background: repeating-linear-gradient(90deg, #86e5bb 0 3px, transparent 3px 6px); }
+    .signal .pick-icon, .signal .device-glyph { border-radius: 3px; }
+    .signal .primary { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; }
+    .signal .bottom-nav button[aria-current='page'] { background: #314339; }
+
+    .folio { --bg: #eef3f0; --surface: #fff; --ink: #25342e; --muted: #596d62; --line: #c3d2c9; --accent: #ad4b35; --primary-ink: #fff; --icon-bg: #e6ece5; --mode-bg: transparent; --mode-active: transparent; --mode-ink: #a33d2a; --nav-bg: #f9fbf8; --nav-line: #c3d2c9; --radius: 3px; }
+    .folio .screen { background: repeating-linear-gradient(0deg, transparent 0 39px, #dae5dc6b 39px 40px); }
+    .folio .app-head { background: #fff; border-bottom: 1px solid var(--line); }
+    .folio .app-mark, .folio .pick-icon, .folio .device-glyph, .folio .progress-card .big-icon { border-radius: 3px; }
+    .folio .hero { margin: 0 -20px 12px; padding: 13px 20px 14px; background: #fff; border-top: 3px solid var(--accent); border-bottom: 1px solid var(--line); }
+    .folio .hero h3 { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; font-weight: 700; }
+    .folio .eyebrow { color: var(--accent); }
+    .folio .mode { margin-top: 5px; padding: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+    .folio .mode button { border-radius: 0; }
+    .folio .mode button[aria-pressed='true'] { background: transparent; box-shadow: inset 0 -3px var(--accent); }
+    .folio .pick-zone { min-height: 118px; padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--accent); }
+    .folio .file-list li { border-bottom-style: dashed; }
+    .folio .progress-card, .folio .device-row { border-left: 3px solid var(--accent); }
+    .folio .bottom-nav button[aria-current='page'] { box-shadow: inset 0 -3px var(--accent); }
+
+    .courier { --bg: #e1f2ed; --surface: #fffefa; --ink: #1f443c; --muted: #466258; --line: #7fae9b; --accent: #a63e2c; --primary-ink: #fff; --icon-bg: #ffcd58; --mode-bg: #ccece0; --mode-active: #fffefa; --mode-ink: #1a5146; --nav-bg: #f8fbf4; --nav-line: #b2d6c1; --radius: 7px; }
+    .courier .app-head { background: #f8fbf4; }
+    .courier .hero { position: relative; margin: 0 -20px 15px; padding: 14px 23px 15px; background: #ffda75; border-bottom: 2px solid #216457; }
+    .courier .hero::after { content: ''; position: absolute; width: 33px; height: 33px; right: 18px; top: 17px; border: 2px solid #174c41; transform: rotate(10deg); background: repeating-linear-gradient(0deg, transparent 0 6px, #174c4155 6px 7px); }
+    .courier .hero h3 { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; font-weight: 800; }
+    .courier .hero p, .courier .eyebrow { color: #365444; }
+    .courier .mode { margin-bottom: 12px; border: 1px solid #a4d5c2; }
+    .courier .pick-zone { position: relative; min-height: 122px; border: 1px solid #93b9aa; box-shadow: 3px 3px 0 #93b9aa; }
+    .courier .pick-zone::after { content: ''; position: absolute; top: 0; right: 0; width: 30px; height: 30px; background: linear-gradient(45deg, transparent 49%, #ec8764 50%); border-top-right-radius: 6px; }
+    .courier .pick-icon { background: #ffcd58; }
+    .courier .primary { border: 1px solid #792d22; box-shadow: 3px 3px 0 #286a59; }
+    .courier .device-row { border-color: #a5cbb9; box-shadow: 3px 3px 0 #b7d9c6; }
+    .courier .device-glyph { background: #ffd878; }
+    .courier .bottom-nav button[aria-current='page'] { background: #ffda75; color: #225045; }
+    .signal .icon-btn, .folio .icon-btn, .courier .icon-btn,
+    .signal .ticket-chip button, .folio .ticket-chip button, .courier .ticket-chip button { width: 44px; height: 44px; }
+    .signal .mode button, .folio .mode button, .courier .mode button,
+    .signal .primary, .folio .primary, .courier .primary,
+    .signal .secondary, .folio .secondary, .courier .secondary,
+    .signal .text-action, .folio .text-action, .courier .text-action { min-height: 44px; }
+
+    .glass { --bg: #d8e9e2; --surface: #ffffff65; --ink: #19312f; --muted: #4c6d67; --line: #ffffffa6; --accent: #185b59; --primary-ink: #fff; --icon-bg: #ffffff8c; --mode-bg: #ffffff6b; --mode-active: #ffffffc9; --mode-ink: #17413c; --nav-bg: #ecfaf1a9; --nav-line: #ffffff8c; --radius: 14px; }
+    .glass::before { background: linear-gradient(135deg, #d9eee6 2%, #b4d9d5 38%, #d8dff0 62%, #f0d1bd 100%); }
+    .glass::after { content: ''; position: absolute; z-index: -1; inset: 120px -55px 40px 30px; transform: rotate(-22deg); background: repeating-linear-gradient(90deg, #ffffff1f 0 42px, #ffffff00 42px 95px); pointer-events: none; }
+    .glass .app-head { margin: 1px 9px 0; padding: 0 10px; height: 52px; border: 1px solid #ffffff73; border-radius: 13px; background: #ffffff62; backdrop-filter: blur(24px) saturate(145%); -webkit-backdrop-filter: blur(24px) saturate(145%); box-shadow: 0 9px 20px #2e61511c; }
+    .glass .screen { height: calc(100% - 162px); padding-top: 16px; }
+    .glass .hero { margin: 12px 0 21px; }
+    .glass .hero h3 { font-weight: 600; }
+    .glass .mode, .glass .pick-zone, .glass .secondary, .glass .device-row, .glass .ticket-input, .glass .progress-card, .glass .empty { backdrop-filter: blur(22px) saturate(145%); -webkit-backdrop-filter: blur(22px) saturate(145%); box-shadow: 0 8px 22px #37615516, inset 0 1px #fff8; }
+    .glass .pick-zone { border-style: solid; min-height: 153px; }
+    .glass .primary { background: #205f5bdc; box-shadow: 0 9px 22px #28635a38; }
+    .glass .bottom-nav { margin: 0 8px 9px; bottom: 4px; height: 62px; padding-bottom: 4px; border: 1px solid #ffffffa8; border-radius: 18px; backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%); box-shadow: 0 10px 25px #3565542b, inset 0 1px #fffa; }
+    .glass .bottom-nav::after { bottom: -12px; }
+    .glass .bottom-nav button[aria-current='page'] { background: #fff8; }
+
+    .flat { --bg: #f6f4ea; --surface: #fffefa; --ink: #202b28; --muted: #626d5d; --line: #28342d; --accent: #d94d37; --primary-ink: #fffefa; --icon-bg: #edeea8; --mode-bg: #202b28; --mode-active: #d8ec8d; --mode-ink: #202b28; --nav-bg: #f6f4ea; --nav-line: #202b28; --radius: 2px; }
+    .flat .app-head { border-bottom: 2px solid #202b28; }
+    .flat .app-mark { border-radius: 2px; }
+    .flat .hero { padding: 18px 15px; margin: 0 -20px 17px; background: #f68a70; border-bottom: 2px solid #202b28; }
+    .flat .hero h3 { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; font-weight: 800; }
+    .flat .hero p, .flat .hero .eyebrow { color: #334037; }
+    .flat .mode { padding: 3px; border-radius: 2px; }
+    .flat .mode button { color: #f7f4e5; border-radius: 1px; }
+    .flat .mode button[aria-pressed='true'] { color: #20312b; box-shadow: none; }
+    .flat .pick-zone { min-height: 122px; border: 2px solid var(--ink); box-shadow: 4px 4px 0 #202b28; }
+    .flat .pick-icon, .flat .device-glyph, .flat .progress-card .big-icon { border-radius: 2px; }
+    .flat .secondary, .flat .device-row, .flat .progress-card, .flat .empty { border: 1.5px solid var(--ink); }
+    .flat .primary { border: 1.5px solid #202b28; box-shadow: 3px 3px 0 #202b28; }
+    .flat .bottom-nav { border-top-width: 2px; }
+    .flat .bottom-nav button[aria-current='page'] { color: #c94331; }
+
+    .grid { --bg: #162d2a; --surface: #294841d9; --ink: #f4fbea; --muted: #b4c6bd; --line: #7292837a; --accent: #deef80; --primary-ink: #1b302a; --icon-bg: #e3f2a228; --mode-bg: #17312de6; --mode-active: #ddec88; --mode-ink: #21352d; --nav-bg: #1a342ff0; --nav-line: #6b8a78; --radius: 5px; }
+    .grid::before { background: linear-gradient(123deg, #153331 0%, #226052 38%, #b17f69 78%, #e5d286 120%); }
+    .grid::after { content: ''; position: absolute; z-index: -1; inset: 0; background-image: linear-gradient(#e1ffcb19 1px, transparent 1px), linear-gradient(90deg, #e1ffcb19 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(#0008, #000); pointer-events: none; }
+    .grid .statusbar, .grid .app-head { color: #f3f9e8; }
+    .grid .app-mark { background: #cb735b; }
+    .grid .hero { padding: 15px 0 17px; border-bottom: 1px solid #c7e2ad77; margin: 8px 0 18px; }
+    .grid .hero h3 { font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif; }
+    .grid .eyebrow { color: #e6f491; }
+    .grid .mode { border: 1px solid var(--line); }
+    .grid .pick-zone { border-style: solid; min-height: 128px; }
+    .grid .pick-icon { border: 1px solid #d5ee9b69; }
+    .grid .primary { box-shadow: 0 0 0 1px #f0fcbd8c, 0 8px 24px #ddec8830; }
+    .grid .bottom-nav { color: #f3f9ea; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    .grid .bottom-nav button[aria-current='page'] { color: #eafa9c; }
+    .grid .device-row, .grid .progress-card, .grid .secondary { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+
+    @media (max-width: 1250px) and (min-width: 701px) {
+      .gallery { grid-template-columns: repeat(2, minmax(0, 400px)); justify-content: center; gap: 30px; }
+      .phone { height: 690px; }
+    }
+    @media (max-width: 700px) {
+      .review { padding: 16px 14px 32px; }
+      .review-header { padding-bottom: 13px; }
+      .review-meta > span:first-child { display: none; }
+      .review-brand span:last-child { display: none; }
+      .review-intro { padding: 19px 0 14px; }
+      .review-titleline { display: block; }
+      .review-titleline h1 { font-size: 27px; }
+      .review-titleline p { margin: 8px 0 0; font-size: 12px; }
+      .mobile-chooser { display: flex; gap: 7px; overflow-x: auto; margin: 0 -14px 15px; padding: 0 14px 5px; scrollbar-width: none; }
+      .mobile-chooser::-webkit-scrollbar { display: none; }
+      .mobile-chooser button { white-space: nowrap; padding: 8px 10px; border: 1px solid #bdcbc2; border-radius: 4px; background: #f8faf7; color: #40524b; font-size: 11px; font-weight: 700; }
+      .mobile-chooser button[aria-selected='true'] { border-color: #193e30; color: #fff; background: #1c4433; }
+      .gallery { display: block; max-width: 420px; margin: auto; }
+      .concept { display: none; }
+      .concept.active { display: block; }
+      .concept-head { min-height: 50px; }
+      .phone { height: min(720px, calc(100dvh - 227px)); min-height: 520px; max-height: 800px; }
+      .hero h3 { font-size: 30px; }
+      .concept-note { min-height: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/><path d="M5 19h14"/></symbol>
+    <symbol id="i-receive" viewBox="0 0 24 24"><path d="M12 5v14m7-7-7 7-7-7"/><path d="M5 5h14"/></symbol>
+    <symbol id="i-devices" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8m-8 4h5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 20h.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 11v5m0-8h.01"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 .4l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7-.4l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="15" rx="2"/><path d="M8 21h8m-4-3v3"/></symbol>
+  </svg>
+
+  <main class="review">
+    <header class="review-header">
+      <div class="review-brand"><span class="review-mark"><img src="../../harmony/AppScope/resources/base/media/foreground.png" alt=""></span>DashBeam <span>/ HarmonyOS UX</span></div>
+      <div class="review-meta"><span>Selected · 05 / 08</span><span class="live">交互原型</span></div>
+    </header>
+    <section class="review-intro" aria-labelledby="review-title">
+      <div class="review-kicker">DashBeam / Selected direction</div>
+      <div class="review-titleline"><h1 id="review-title">极简 × 玻璃。</h1><p>已选择轻量磨砂与清晰留白的组合。原有七种方向仍可切换对照，发送、接收与设备流程保持一致。</p></div>
+    </section>
+    <div class="mobile-chooser" role="tablist" aria-label="选择设计方案"></div>
+    <section id="gallery" class="gallery" aria-label="八种 HarmonyOS 界面方案"></section>
+    <footer class="review-foot"><svg class="icon"><use href="#i-info"></use></svg>文件选择读取本机文件名；票据、设备、配对、接收进度与历史均为演示数据。本页仅供设计审视，玻璃效果为 CSS 近似，实际 ArkUI 可使用 backgroundBlurStyle。</footer>
+  </main>
+
+  <script>
+    (() => {
+      const logo = '../../harmony/AppScope/resources/base/media/foreground.png';
+      const gallery = document.querySelector('#gallery');
+      const chooser = document.querySelector('.mobile-chooser');
+      const concepts = [
+        { id: 'hybrid', number: '05 / SELECTED', name: '极简 × 玻璃', note: '清晰留白 · 关键表面轻度磨砂', colors: ['#f6faf8', '#d7e9e3', '#226250'] },
+        { id: 'signal', number: '06 / NEW', name: '信号台', note: '连接优先 · 状态始终可读', colors: ['#202a25', '#86e5bb', '#b9cabc'] },
+        { id: 'folio', number: '07 / NEW', name: '档案纸', note: '文件优先 · 像记录单一样有序', colors: ['#eef3f0', '#ad4b35', '#25342e'] },
+        { id: 'courier', number: '08 / NEW', name: '轻快投递', note: '明快直接 · 传输像递交一样轻松', colors: ['#e1f2ed', '#ffda75', '#a63e2c'] },
+        { id: 'minimal', number: '01', name: '极简主义', note: '留白为主角 · 操作不绕路', colors: ['#fbfcfa', '#245d4c', '#dce8dc'] },
+        { id: 'glass', number: '02', name: '玻璃拟态', note: '原生材质方向 · 轻盈的层次', colors: ['#b4d9d5', '#d8dff0', '#f0d1bd'] },
+        { id: 'flat', number: '03', name: '扁平设计', note: '鲜明分区 · 一眼识别动作', colors: ['#f68a70', '#d8ec8d', '#202b28'] },
+        { id: 'grid', number: '04', name: '渐变网格', note: '空间秩序 · 更鲜活的传输感', colors: ['#226052', '#ddec88', '#d97860'] },
+      ];
+      const state = new Map(concepts.map(({ id }) => [id, {
+        tab: 'send', files: [], sendFlow: 'idle', receiveFlow: 'idle', progress: 0, code: '', paired: false,
+        invite: false, history: [], destination: '下载', notifications: true, deviceName: '我的 Harmony 设备', toast: '',
+      }]));
+      let activeConcept = 'hybrid';
+
+      const icon = (name, size = '') => `<svg class="icon ${size}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+      const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+      const sizeLabel = (bytes) => bytes === 0 ? '0 B' : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+      const fileList = (files) => files.length ? `<ul class="file-list">${files.slice(0, 3).map((file) => `<li>${icon('file', 'sm')}<span class="filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="filesize">${sizeLabel(file.size)}</span></li>`).join('')}${files.length > 3 ? `<li class="muted">还有 ${files.length - 3} 个文件</li>` : ''}</ul>` : '';
+
+      function sendPanel(view) {
+        if (view.sendFlow === 'sharing' || view.sendFlow === 'done') {
+          const done = view.sendFlow === 'done';
+          return `<div class="progress-card"><div class="big-icon">${icon(done ? 'check' : 'link', 'lg')}</div><h4>${done ? '发送完成' : '等待对方接收'}</h4><p>${done ? '演示传输已完成。你可以开始下一次发送。' : `${view.files.length} 项内容已就绪。把演示票据交给接收方，或邀请已配对设备。`}</p>${done ? '' : `<div class="ticket-chip"><code>DB-DEMO-2748</code><button type="button" data-action="copy" title="复制演示票据" aria-label="复制演示票据">${icon('copy', 'sm')}</button></div>`}</div>${done ? `<button class="primary" type="button" data-action="reset">${icon('plus', 'sm')}再次发送</button>` : `<div class="nearby"><div class="section-heading"><h4 class="section-label">发送到设备</h4></div>${deviceRow(view, true)}<button class="primary" type="button" data-action="finish-send">${icon('check', 'sm')}模拟完成</button></div>`}`;
+        }
+        const heading = '<h4 class="section-label">选择内容</h4>';
+        const pickZone = `<button type="button" class="pick-zone" data-action="pick-file"><span class="pick-icon">${icon('plus', 'lg')}</span><strong>${view.files.length ? `已选择 ${view.files.length} 项内容` : '添加文件'}</strong><small>选择要发送的文件或照片</small></button>`;
+        const fileActions = `<div class="file-actions"><button type="button" class="secondary" data-action="pick-file">${icon('file', 'sm')}文件</button><button type="button" class="secondary" data-action="pick-folder">${icon('folder', 'sm')}文件夹</button></div>`;
+        const files = fileList(view.files);
+        const shareAction = `<button type="button" class="primary" data-action="share" ${view.files.length ? '' : 'disabled'}>${icon('send', 'sm')}生成分享票据</button>`;
+        const nearby = `<div class="nearby"><div class="section-heading"><h4 class="section-label">附近设备</h4><button type="button" class="text-action" data-action="navigate" data-tab="devices">查看全部 ${icon('arrow', 'sm')}</button></div>${deviceRow(view, false)}</div>`;
+        if (view.id === 'signal') {
+          return `<div class="panel">${nearby}${heading}${pickZone}${fileActions}${files}${shareAction}</div>`;
+        }
+        if (view.id === 'folio' || view.id === 'courier') {
+          return `<div class="panel">${heading}${pickZone}${files}${shareAction}${fileActions}${nearby}</div>`;
+        }
+        return `<div class="panel">${heading}${pickZone}${fileActions}${files}${shareAction}${nearby}</div>`;
+      }
+
+      function deviceRow(view, inShare) {
+        const label = view.paired ? '已配对 · 在线' : '附近 · 可配对';
+        const action = inShare ? 'invite' : 'navigate';
+        const extra = inShare ? '' : 'data-tab="devices"';
+        return `<button class="device-row" type="button" data-action="${action}" ${extra}><span class="device-glyph">${icon('devices')}</span><span class="device-info"><strong>Mate 70 Pro</strong><small>${view.invite && inShare ? '演示邀请已送达' : label}</small></span>${icon('arrow', 'sm')}</button>`;
+      }
+
+      function receivePanel(view) {
+        if (view.receiveFlow === 'receiving' || view.receiveFlow === 'received') {
+          const done = view.receiveFlow === 'received';
+          return `<div class="progress-card"><div class="big-icon">${icon(done ? 'check' : 'receive', 'lg')}</div><h4>${done ? '接收完成' : '正在接收'}</h4><p>${done ? `文件已保存到“${escapeHtml(view.destination)}”（演示）。` : '正在模拟从发送方获取文件。'}</p><div class="progress-track" role="progressbar" aria-label="接收进度" aria-valuenow="${view.progress}" aria-valuemin="0" aria-valuemax="100"><span style="width:${view.progress}%"></span></div><div class="progress-meta"><span>${done ? '已完成' : '正在传输'}</span><span>${view.progress}%</span></div></div>${done ? `<button class="primary" type="button" data-action="reset">${icon('plus', 'sm')}继续接收</button>` : ''}`;
+        }
+        return `<div class="panel"><label class="field-label" for="ticket-${view.id}">分享票据</label><textarea class="ticket-input" id="ticket-${view.id}" data-field="code" placeholder="粘贴发送方分享的票据…" spellcheck="false">${escapeHtml(view.code)}</textarea><div class="destination">${icon('folder')}<span>保存位置</span><select data-field="destination" aria-label="选择保存位置"><option ${view.destination === '下载' ? 'selected' : ''}>下载</option><option ${view.destination === '文档' ? 'selected' : ''}>文档</option><option ${view.destination === '图片' ? 'selected' : ''}>图片</option></select></div><button type="button" class="primary" data-action="receive" ${view.code.trim() ? '' : 'disabled'}>${icon('receive', 'sm')}开始接收</button><p class="info-line">${icon('info', 'sm')}接收前请确认票据来自你信任的发送方。</p></div>`;
+      }
+
+      function devicesPanel(view) {
+        return `<div class="panel"><h4 class="subsection">附近的设备</h4><div class="device-row"><span class="device-glyph">${icon('devices')}</span><span class="device-info"><strong>Mate 70 Pro</strong><small>${view.paired ? '已配对 · 在线' : '可配对 · 演示设备'}</small></span><span class="online-dot"></span></div><button type="button" class="primary" data-action="pair">${icon(view.paired ? 'check' : 'link', 'sm')}${view.paired ? '已配对' : '模拟配对'}</button><h4 class="subsection">这台设备</h4><div class="device-row"><span class="device-glyph">${icon('devices')}</span><span class="device-info"><strong>${escapeHtml(view.deviceName)}</strong><small>允许附近设备发现</small></span>${icon('wifi', 'sm')}</div></div>`;
+      }
+
+      function historyPanel(view) {
+        return `<div class="panel"><h4 class="subsection">最近传输</h4>${view.history.length ? view.history.map((entry) => `<div class="history-item"><span class="device-glyph">${icon(entry.type === 'send' ? 'send' : 'receive', 'sm')}</span><span class="device-info"><strong>${escapeHtml(entry.name)}</strong><small>${entry.type === 'send' ? '已发送' : '已接收'} · 刚刚 · 演示</small></span>${icon('check', 'sm')}</div>`).join('') : `<div class="empty">${icon('history', 'lg')}<strong>还没有传输记录</strong><p>完成一次演示传输后会显示在这里</p></div><button type="button" class="primary" data-action="navigate" data-tab="send">${icon('plus', 'sm')}开始发送</button>`}</div>`;
+      }
+
+      function settingsPanel(view) {
+        return `<div class="panel"><h4 class="subsection">本机</h4><label class="setting-row"><span><strong>设备名称</strong><small>附近设备可看到这个名称</small></span><input data-field="deviceName" type="text" value="${escapeHtml(view.deviceName)}" maxlength="26" aria-label="设备名称"></label><label class="setting-row"><span><strong>传输通知</strong><small>完成时提醒</small></span><input data-field="notifications" type="checkbox" ${view.notifications ? 'checked' : ''}></label><h4 class="subsection">关于</h4><div class="setting-row"><span><strong>DashBeam</strong><small>HarmonyOS 界面原型</small></span><span class="muted">2026</span></div></div>`;
+      }
+
+      function screenContent(view) {
+        const headings = { send: ['发送文件', '选择文件，生成票据，分享给对方。'], receive: ['接收文件', '粘贴票据，保存到这台设备。'], devices: ['附近设备', '找到设备，再建立连接。'], history: ['传输记录', '每次往来，一目了然。'], settings: ['设置', '这台设备的偏好。'] };
+        const [heading, description] = headings[view.tab];
+        const subtitle = view.tab === 'send' && view.sendFlow === 'sharing' ? '内容就绪，等待另一台设备。' : description;
+        const showMode = view.tab === 'send' || view.tab === 'receive';
+        const content = view.tab === 'send' ? sendPanel(view) : view.tab === 'receive' ? receivePanel(view) : view.tab === 'devices' ? devicesPanel(view) : view.tab === 'history' ? historyPanel(view) : settingsPanel(view);
+        return `<div class="hero"><span class="eyebrow">${view.tab === 'send' ? 'SHARE / 01' : view.tab === 'receive' ? 'RECEIVE / 02' : 'DASHBEAM / HARMONY'}</span><h3>${heading}</h3><p>${subtitle}</p></div>${showMode ? `<div class="mode" role="group" aria-label="传输模式"><button type="button" data-action="navigate" data-tab="send" aria-pressed="${view.tab === 'send'}">发送</button><button type="button" data-action="navigate" data-tab="receive" aria-pressed="${view.tab === 'receive'}">接收</button></div>` : ''}${content}`;
+      }
+
+      function phone(id) {
+        const view = state.get(id);
+        view.id = id;
+        return `<div class="phone ${id}"><div class="statusbar"><span>09:41</span><span class="status-icons">${icon('wifi', 'sm')}<span class="battery" aria-label="电量"></span></span></div><header class="app-head"><div class="app-identity"><span class="app-mark"><img src="${logo}" alt=""></span><strong>DashBeam</strong></div><button class="icon-btn" type="button" data-action="navigate" data-tab="settings" title="设置" aria-label="设置">${icon('settings')}</button></header><div class="screen">${screenContent(view)}</div><nav class="bottom-nav" aria-label="主导航">${[['send', 'send', '传输'], ['devices', 'devices', '设备'], ['history', 'history', '记录'], ['settings', 'settings', '设置']].map(([tab, glyph, label]) => `<button type="button" data-action="navigate" data-tab="${tab}" ${view.tab === tab || (tab === 'send' && view.tab === 'receive') ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></button>`).join('')}</nav>${view.toast ? `<div class="toast" role="status">${escapeHtml(view.toast)}</div>` : ''}<input type="file" data-file="file" hidden multiple><input type="file" data-file="folder" hidden multiple webkitdirectory></div>`;
+      }
+
+      function render(id) {
+        const root = gallery.querySelector(`[data-variant="${id}"]`);
+        const currentScroll = root.querySelector('.screen')?.scrollTop || 0;
+        root.querySelector('.phone-slot').innerHTML = phone(id);
+        root.querySelector('.screen').scrollTop = currentScroll;
+      }
+
+      function showToast(id, message) {
+        const view = state.get(id);
+        view.toast = message;
+        render(id);
+        clearTimeout(view.toastTimer);
+        view.toastTimer = setTimeout(() => { view.toast = ''; render(id); }, 2400);
+      }
+
+      function navigate(id, tab) {
+        const view = state.get(id);
+        view.tab = tab;
+        render(id);
+        gallery.querySelector(`[data-variant="${id}"] .screen`).scrollTop = 0;
+      }
+
+      gallery.innerHTML = concepts.map(({ id, number, name, note, colors }) => `<article class="concept ${id === activeConcept ? 'active' : ''}" data-variant="${id}" aria-label="${name}原型"><header class="concept-head"><div><span class="concept-num">DIRECTION ${number}</span><h2>${name}</h2></div><span class="swatches" aria-hidden="true">${colors.map((color) => `<i style="background:${color}"></i>`).join('')}</span></header><div class="phone-slot">${phone(id)}</div><p class="concept-note">${note}</p></article>`).join('');
+      chooser.innerHTML = concepts.map(({ id, name }) => `<button type="button" role="tab" aria-selected="${id === activeConcept}" data-concept="${id}">${name}</button>`).join('');
+
+      chooser.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-concept]');
+        if (!button) return;
+        activeConcept = button.dataset.concept;
+        gallery.querySelectorAll('.concept').forEach((concept) => concept.classList.toggle('active', concept.dataset.variant === activeConcept));
+        chooser.querySelectorAll('[data-concept]').forEach((option) => option.setAttribute('aria-selected', String(option.dataset.concept === activeConcept)));
+      });
+
+      gallery.addEventListener('click', async (event) => {
+        const actionButton = event.target.closest('[data-action]');
+        if (!actionButton) return;
+        const id = actionButton.closest('[data-variant]').dataset.variant;
+        const view = state.get(id);
+        switch (actionButton.dataset.action) {
+          case 'navigate': navigate(id, actionButton.dataset.tab); break;
+          case 'pick-file':
+          case 'pick-folder': actionButton.closest('.phone').querySelector(`[data-file="${actionButton.dataset.action === 'pick-file' ? 'file' : 'folder'}"]`).click(); break;
+          case 'share': view.sendFlow = 'sharing'; render(id); break;
+          case 'finish-send': view.sendFlow = 'done'; view.history.unshift({ type: 'send', name: view.files[0]?.name || '发送的文件' }); render(id); break;
+          case 'reset':
+            if (view.tab === 'send') {
+              view.sendFlow = 'idle';
+              view.files = [];
+              view.invite = false;
+            } else {
+              view.receiveFlow = 'idle';
+              view.progress = 0;
+              view.code = '';
+            }
+            render(id);
+            break;
+          case 'pair': view.paired = true; showToast(id, '演示设备已配对'); break;
+          case 'invite': view.invite = true; showToast(id, '演示邀请已送达'); break;
+          case 'copy':
+            try {
+              await navigator.clipboard.writeText('DB-DEMO-2748');
+              showToast(id, '已复制演示票据');
+            } catch {
+              showToast(id, '浏览器不允许在此页面复制，请手动选取票据');
+            }
+            break;
+          case 'receive': {
+            if (!view.code.trim()) return;
+            view.receiveFlow = 'receiving';
+            view.progress = 8;
+            render(id);
+            const timer = setInterval(() => {
+              view.progress = Math.min(100, view.progress + 23);
+              if (view.progress === 100) {
+                clearInterval(timer);
+                view.receiveFlow = 'received';
+                view.history.unshift({ type: 'receive', name: '演示文件' });
+              }
+              render(id);
+            }, 420);
+            break;
+          }
+          default: break;
+        }
+      });
+
+      gallery.addEventListener('input', (event) => {
+        const field = event.target.dataset.field;
+        if (!field) return;
+        const id = event.target.closest('[data-variant]').dataset.variant;
+        const view = state.get(id);
+        if (field === 'code') {
+          view.code = event.target.value;
+          event.target.closest('.screen').querySelector('[data-action="receive"]').disabled = !view.code.trim();
+        } else if (field === 'deviceName') {
+          view.deviceName = event.target.value;
+        } else if (field === 'notifications') {
+          view.notifications = event.target.checked;
+        }
+      });
+
+      gallery.addEventListener('change', (event) => {
+        const id = event.target.closest('[data-variant]')?.dataset.variant;
+        if (!id) return;
+        const view = state.get(id);
+        if (event.target.dataset.file) {
+          view.files.push(...Array.from(event.target.files, ({ name, size }) => ({ name, size })));
+          render(id);
+        } else if (event.target.dataset.field === 'destination') {
+          view.destination = event.target.value;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

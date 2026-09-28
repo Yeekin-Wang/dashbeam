@@ -13,11 +13,12 @@
  * limitations under the License.
  */
 
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { appLinkService } from '../services/AppLinkService';
 import { engineService } from '../services/EngineService';
+import { platformService } from '../services/PlatformService';
 import { platformContext } from '../services/PlatformContext';
 import { systemIntegrationService } from '../services/SystemIntegrationService';
 
@@ -37,11 +38,6 @@ export default class EntryAbility extends UIAbility {
     engineService.initializeNode().catch((error: Error): void => {
       hilog.error(DOMAIN, 'testTag', 'Failed to initialize node. Cause: %{public}s', error.message);
     });
-    try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
-    }
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
@@ -57,6 +53,10 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
   }
 
+  onConfigurationUpdate(newConfig: Configuration): void {
+    platformService.updateSystemBarAppearance(newConfig.colorMode);
+  }
+
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
@@ -68,6 +68,11 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
+      platformService.loadSettings().then((settings): void => {
+        platformService.applyDisplayMode(settings.theme);
+      }).catch((error: Error): void => {
+        hilog.error(DOMAIN, 'testTag', 'Failed to restore display mode. Cause: %{public}s', error.message);
+      });
     });
   }
 

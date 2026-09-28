@@ -2,39 +2,55 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#1C2024"
+      "value": "#1E2523"
     },
     {
       "name": "app_background",
-      "value": "#1C2024"
+      "value": "#1E2523"
     },
     {
       "name": "panel_surface",
-      "value": "#252B31"
+      "value": "#29332F"
+    },
+    {
+      "name": "glass_surface",
+      "value": "#9932403B"
+    },
+    {
+      "name": "glass_edge",
+      "value": "#6668766E"
+    },
+    {
+      "name": "glass_shadow",
+      "value": "#40000000"
     },
     {
       "name": "context_surface",
-      "value": "#20262B"
+      "value": "#293530"
     },
     {
       "name": "selected_surface",
-      "value": "#2C3945"
+      "value": "#365944"
     },
     {
       "name": "text_primary",
-      "value": "#F1F4F6"
+      "value": "#F2F6F4"
     },
     {
       "name": "text_secondary",
-      "value": "#A7B2BC"
+      "value": "#C5D0C9"
     },
     {
       "name": "divider",
-      "value": "#36414B"
+      "value": "#526159"
     },
     {
       "name": "accent",
-      "value": "#7FB1D1"
+      "value": "#94D7AD"
+    },
+    {
+      "name": "action_text",
+      "value": "#153324"
     },
     {
       "name": "critical",
@@ -42,7 +58,7 @@
     },
     {
       "name": "subtle_warning",
-      "value": "#40362A"
+      "value": "#D940362A"
     }
   ]
 }
