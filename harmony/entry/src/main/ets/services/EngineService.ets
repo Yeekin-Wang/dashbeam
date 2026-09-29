@@ -186,6 +186,7 @@ interface NativeNodeStatusData {
   stopRequested?: boolean
   networkReady?: boolean
   deviceInfo?: NativeNodeDeviceInfo
+  nearbyUnavailableReason?: string | null
 }
 
 interface NativeNodeStatusResponse {
@@ -223,6 +224,7 @@ interface NativeNodeCommandEvent {
 interface NativeNodeReadyData {
   deviceInfo: NativeNodeDeviceInfo
   networkReady: boolean
+  nearbyUnavailableReason?: string | null
 }
 
 interface NativeNodeReadyEvent {
@@ -798,8 +800,7 @@ export class EngineService {
     }
     this.nodeSnapshot.networkReady = status.networkReady ?? false
     if (status.status === 'ready') {
-      this.nodeSnapshot.message = this.nodeSnapshot.networkReady ?
-        '设备节点已就绪，正在发现附近设备。' : '设备节点已启动，网络仍在预热。'
+      this.nodeSnapshot.message = this.nodeReadyMessage(this.nodeSnapshot.networkReady, status.nearbyUnavailableReason)
     } else if (status.status === 'starting') {
       this.nodeSnapshot.message = status.stopRequested ? '设备节点启动后将立即停止。' : '正在启动设备节点。'
     } else if (status.status === 'stopping') {
@@ -812,6 +813,13 @@ export class EngineService {
     this.nodeSnapshot.endpointId = info.endpoint_id
     this.nodeSnapshot.deviceName = info.display_name
     this.nodeSnapshot.deviceType = info.device_type
+  }
+
+  private nodeReadyMessage(networkReady: boolean, nearbyUnavailableReason?: string | null): string {
+    if (nearbyUnavailableReason !== undefined && nearbyUnavailableReason !== null && nearbyUnavailableReason.length > 0) {
+      return '附近设备发现不可用：' + nearbyUnavailableReason
+    }
+    return networkReady ? '设备节点已就绪，正在发现附近设备。' : '设备节点已启动，网络仍在预热。'
   }
 
   private runNodeCommand(request: NativeNodeCommandRequest): Promise<string> {
@@ -915,8 +923,7 @@ export class EngineService {
         this.nodeSnapshot.status = 'ready'
         this.nodeSnapshot.networkReady = event.data.networkReady
         this.applyDeviceInfo(event.data.deviceInfo)
-        this.nodeSnapshot.message = event.data.networkReady ?
-          '设备节点已就绪，正在发现附近设备。' : '设备节点已启动，网络仍在预热。'
+        this.nodeSnapshot.message = this.nodeReadyMessage(event.data.networkReady, event.data.nearbyUnavailableReason)
         this.notifyNodeChanged()
         await this.refreshDevices()
         return

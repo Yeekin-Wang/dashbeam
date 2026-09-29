@@ -19,7 +19,6 @@ import { appLinkService, AppLinkListener } from '../services/AppLinkService'
 import { engineService, NodeListener } from '../services/EngineService'
 import { platformService } from '../services/PlatformService'
 import { systemIntegrationService } from '../services/SystemIntegrationService'
-import { DesignPreview } from './DesignPreview'
 
 type NodeChangedCallback = (snapshot: NodeSnapshot) => void
 type DevicesChangedCallback = (paired: Array<PairedDevice>, nearby: Array<NearbyDevice>) => void
@@ -98,7 +97,6 @@ class AppShellNodeListener implements NodeListener {
 @Component
 export struct AppShell {
   @State private activeSection: NavSection = NavSection.SEND
-  @State private showDesignPreview: boolean = false
   @State private breakpoint: string = 'sm'
   @State private viewportHeight: number = 720
   @State private sendItems: Array<TransferItem> = []
@@ -901,6 +899,7 @@ export struct AppShell {
     }
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     .backgroundColor(this.activeSection === section ? this.themeSelected : Color.Transparent)
+    .animation({ duration: 180, curve: Curve.EaseOut })
     .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
       this.activeSection = section
@@ -917,6 +916,7 @@ export struct AppShell {
         .fontColor(this.activeSection === NavSection.SEND ? $r('app.color.text_primary') :
           $r('app.color.text_secondary'))
         .backgroundColor(this.activeSection === NavSection.SEND ? this.themeSelected : Color.Transparent)
+        .animation({ duration: 180, curve: Curve.EaseOut })
         .borderRadius($r('app.float.radius_s'))
         .onClick(() => {
           this.activeSection = NavSection.SEND
@@ -928,6 +928,7 @@ export struct AppShell {
         .fontColor(this.activeSection === NavSection.RECEIVE ? $r('app.color.text_primary') :
           $r('app.color.text_secondary'))
         .backgroundColor(this.activeSection === NavSection.RECEIVE ? this.themeSelected : Color.Transparent)
+        .animation({ duration: 180, curve: Curve.EaseOut })
         .borderRadius($r('app.float.radius_s'))
         .onClick(() => {
           this.activeSection = NavSection.RECEIVE
@@ -976,6 +977,7 @@ export struct AppShell {
     .backgroundColor(this.activeSection === section ||
       (section === NavSection.SEND && this.activeSection === NavSection.RECEIVE) ?
       this.themeSelected : Color.Transparent)
+    .animation({ duration: 180, curve: Curve.EaseOut })
     .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
       this.activeSection = section
@@ -1072,6 +1074,7 @@ export struct AppShell {
     .backgroundColor($r('app.color.glass_surface'))
     .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1093,6 +1096,7 @@ export struct AppShell {
         .width('100%')
       Progress({ value: panel.progress.progressRatio * 100, total: 100, type: ProgressType.Linear })
         .color(this.themeAccent)
+        .style({ enableSmoothEffect: true })
       if (panel.progress.bytesLabel.length > 0 || panel.progress.speedLabel.length > 0) {
         Row() {
           Text(panel.progress.bytesLabel)
@@ -1104,6 +1108,7 @@ export struct AppShell {
             .fontColor($r('app.color.text_secondary'))
         }
         .width('100%')
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }
       if (panel.progress.ticket.length > 0) {
         Column({ space: 8 }) {
@@ -1123,12 +1128,14 @@ export struct AppShell {
               this.copyCurrentTicket()
             })
         }
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }
       if (panel.progress.errorMessage.length > 0) {
         Text(panel.progress.errorMessage)
           .fontSize($r('app.float.caption'))
           .fontColor($r('app.color.critical'))
           .width('100%')
+          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }
       if ((panel.progress.stage === TransferStage.SHARING || panel.progress.stage === TransferStage.RECEIVING) &&
         panel.progress.transferId.length > 0) {
@@ -1148,6 +1155,7 @@ export struct AppShell {
     .border({ width: 1, color: $r('app.color.glass_edge') })
     .borderRadius($r('app.float.radius_s'))
     .shadow({ radius: 14, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 4 })
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1181,6 +1189,7 @@ export struct AppShell {
         .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
         .shadow({ radius: 14, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 4 })
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
         .onClick(() => {
           this.chooseFiles()
         })
@@ -1216,6 +1225,7 @@ export struct AppShell {
           .backgroundColor($r('app.color.glass_surface'))
           .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
+          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
         }, (item: TransferItem) => item.id)
       }
 
@@ -1383,6 +1393,7 @@ export struct AppShell {
         }, (device: NearbyDevice) => 'nearby-' + device.id)
       }
     }
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1432,6 +1443,7 @@ export struct AppShell {
         .backgroundColor($r('app.color.glass_surface'))
         .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }
 
       if (this.receiveInviteStatus.length > 0) {
@@ -1534,6 +1546,7 @@ export struct AppShell {
         this.buildProgressPanel({ progress: this.receiveState })
       }
     }
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1592,6 +1605,7 @@ export struct AppShell {
         .backgroundColor($r('app.color.glass_surface'))
         .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }
 
       if (this.nodeOperationStatus.length > 0) {
@@ -1636,6 +1650,7 @@ export struct AppShell {
           .backgroundColor($r('app.color.glass_surface'))
           .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
+          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
         }, (device: PairedDevice) => device.id)
       }
 
@@ -1712,6 +1727,7 @@ export struct AppShell {
           '\n网络：' + (this.nodeSnapshot.networkReady ? '已就绪' : '未就绪')
       })
     }
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1759,6 +1775,7 @@ export struct AppShell {
         .backgroundColor($r('app.color.glass_surface'))
         .border({ width: 1, color: $r('app.color.glass_edge') })
         .borderRadius($r('app.float.radius_s'))
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
       }, (device: NearbyDevice) => device.id)
     }
   }
@@ -1795,9 +1812,11 @@ export struct AppShell {
           .backgroundColor($r('app.color.glass_surface'))
           .border({ width: 1, color: $r('app.color.glass_edge') })
           .borderRadius($r('app.float.radius_s'))
+          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
         }, (entry: HistoryEntry) => entry.id)
       }
     }
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1881,16 +1900,8 @@ export struct AppShell {
       this.buildThemeColorSection()
       this.buildDisplayModeSection()
       this.buildPlainPanel({ title: '关于', detail: this.settings.about })
-      Button('方案预览')
-        .height(44)
-        .backgroundColor($r('app.color.glass_surface'))
-        .border({ width: 1, color: $r('app.color.glass_edge') })
-        .borderRadius($r('app.float.radius_s'))
-        .fontColor($r('app.color.text_secondary'))
-        .onClick(() => {
-          this.showDesignPreview = true
-        })
     }
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1909,6 +1920,7 @@ export struct AppShell {
             .height(44)
             .fontColor($r('app.color.text_primary'))
             .backgroundColor(this.settings.theme === mode ? this.themeSelected : Color.Transparent)
+            .animation({ duration: 180, curve: Curve.EaseOut })
             .borderRadius($r('app.float.radius_s'))
             .onClick(() => {
               this.updateDisplayMode(mode)
@@ -1940,6 +1952,7 @@ export struct AppShell {
           .width(38)
           .height(38)
           .backgroundColor(this.themeAccent)
+          .animation({ duration: 200, curve: Curve.EaseOut })
           .borderRadius(19)
         Text(this.themeAccent)
           .fontSize($r('app.float.body_s'))
@@ -2068,6 +2081,7 @@ export struct AppShell {
             .fontSize($r('app.float.body_s'))
             .fontColor($r('app.color.critical'))
             .width('100%')
+            .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
         }
         Row({ space: 10 }) {
           Button('取消')
@@ -2076,6 +2090,7 @@ export struct AppShell {
             .height(44)
             .fontColor($r('app.color.text_primary'))
             .backgroundColor($r('app.color.selected_surface'))
+            .borderRadius($r('app.float.radius_s'))
             .onClick(() => {
               this.showColorPicker = false
             })
@@ -2085,6 +2100,7 @@ export struct AppShell {
             .height(44)
             .fontColor(this.themeActionText)
             .backgroundColor(this.themeAccent)
+            .borderRadius($r('app.float.radius_s'))
             .onClick(() => {
               this.saveRgbColor()
             })
@@ -2099,6 +2115,7 @@ export struct AppShell {
       .borderRadius(12)
       .shadow({ radius: 18, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 5 })
       .translate({ y: this.pickerEditing ? -120 : 0 })
+      .animation({ duration: 200, curve: Curve.EaseOut })
     }
     .width('100%')
     .height('100%')
@@ -2196,11 +2213,7 @@ export struct AppShell {
 
   build() {
     Column() {
-      if (this.showDesignPreview) {
-        DesignPreview({ onClose: (): void => {
-          this.showDesignPreview = false
-        } })
-      } else if (this.breakpoint === 'sm') {
+      if (this.breakpoint === 'sm') {
         this.buildMainContent()
         this.buildBottomNav()
       } else if (this.breakpoint === 'md') {

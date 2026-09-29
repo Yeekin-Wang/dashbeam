@@ -277,6 +277,7 @@ async fn run_start(request: ValidatedNodeStart, callback: CallbackSlot) {
     let ready_data = json!({
         "deviceInfo": service.device_info(),
         "networkReady": service.is_network_ready(),
+        "nearbyUnavailableReason": service.nearby_unavailable_reason(),
     });
     let landing = {
         let mut state = manager().lock();
@@ -658,6 +659,7 @@ pub fn status() -> Value {
             "sessionId": session_id,
             "networkReady": service.is_network_ready(),
             "deviceInfo": service.device_info(),
+            "nearbyUnavailableReason": service.nearby_unavailable_reason(),
         }),
         StatusSnapshot::Stopping { session_id } => json!({
             "status": "stopping",
