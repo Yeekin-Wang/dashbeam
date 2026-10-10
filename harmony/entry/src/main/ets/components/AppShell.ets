@@ -12,6 +12,7 @@ import {
   PairedDevice,
   TransferItem,
   TransferMetadata,
+  TransferPeer,
   TransferProgress,
   TransferStage
 } from '../models/AppModels'
@@ -59,6 +60,35 @@ interface PickerRgbField {
   onValueChanged: (value: string) => void
 }
 
+interface TargetRow {
+  target: DeviceTarget
+  recipient: boolean
+}
+
+interface TaskPanel {
+  progress: TransferProgress
+  receive: boolean
+}
+
+class DeviceTarget extends TransferPeer {
+  deviceType: string = ''
+  os: string = ''
+  paired: boolean = false
+  online: boolean = false
+}
+
+class DeviceThread {
+  id: string = ''
+  name: string = ''
+  deviceType: string = ''
+  online: boolean = false
+  entries: Array<HistoryEntry> = []
+}
+
+export class AppShellNavigation {
+  onBack: () => boolean = (): boolean => false
+}
+
 class AppShellNodeListener implements NodeListener {
   private readonly nodeChangedCallback: NodeChangedCallback
   private readonly devicesChangedCallback: DevicesChangedCallback
@@ -96,10 +126,19 @@ class AppShellNodeListener implements NodeListener {
 
 @Component
 export struct AppShell {
-  @State private activeSection: NavSection = NavSection.SEND
+  navigation: AppShellNavigation = new AppShellNavigation()
+  @State private activeSection: NavSection = NavSection.DEVICES
+  @State private returnSection: NavSection = NavSection.DEVICES
   @State private breakpoint: string = 'sm'
   @State private viewportHeight: number = 720
+  @State private contentWidth: number = 330
   @State private sendItems: Array<TransferItem> = []
+  @State private fileCatalog: Array<TransferItem> = []
+  @State private fileCategory: string = 'photos'
+  @State private selectedTarget: DeviceTarget = new DeviceTarget()
+  @State private receivePeer: TransferPeer = new TransferPeer()
+  @State private showDeviceSheet: boolean = false
+  @State private activeThreadId: string = ''
   @State private pairedDevices: Array<PairedDevice> = []
   @State private nearbyDevices: Array<NearbyDevice> = []
   @State private historyEntries: Array<HistoryEntry> = []
@@ -166,7 +205,8 @@ export struct AppShell {
 
   private readonly appLinkListener: AppLinkListener = (ticket: string): void => {
     this.receiveTicket = ticket
-    this.activeSection = NavSection.RECEIVE
+    this.receivePeer = new TransferPeer()
+    this.openSecondary(NavSection.RECEIVE)
     this.parseReceiveMetadata().catch((error: Error): void => {
       this.receivePreviewTitle = '元数据解析失败'
       this.receivePreviewDetail = error.message
@@ -174,6 +214,7 @@ export struct AppShell {
   }
 
   aboutToAppear(): void {
+    this.navigation.onBack = (): boolean => this.handleBack()
     this.engineSnapshot = engineService.getAvailability()
     this.nodeSnapshot = engineService.getNodeSnapshot()
     this.resetSendState()
@@ -187,6 +228,7 @@ export struct AppShell {
   }
 
   aboutToDisappear(): void {
+    this.navigation.onBack = (): boolean => false
     engineService.unsubscribeNode(this.nodeListener)
     platformService.unsubscribeDisplay(this.displayListener)
     appLinkService.unsubscribe(this.appLinkListener)
@@ -242,10 +284,12 @@ export struct AppShell {
   }
 
   private async chooseFiles(): Promise<void> {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
     try {
       let items: Array<TransferItem> = await platformService.selectFiles()
-      this.sendItems = [...this.sendItems, ...items]
-      this.markSelectedState()
+      this.addPickedItems(items, 'all')
     } catch (error) {
       let progress: TransferProgress = new TransferProgress()
       progress.stage = TransferStage.ERROR
@@ -257,10 +301,12 @@ export struct AppShell {
   }
 
   private async chooseFolder(): Promise<void> {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
     try {
       let items: Array<TransferItem> = await platformService.selectFolder()
-      this.sendItems = [...this.sendItems, ...items]
-      this.markSelectedState()
+      this.addPickedItems(items, 'documents')
     } catch (error) {
       let progress: TransferProgress = new TransferProgress()
       progress.stage = TransferStage.ERROR
@@ -272,8 +318,207 @@ export struct AppShell {
   }
 
   private clearSendItems(): void {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
     this.sendItems = []
     this.resetSendState()
+  }
+
+  private addPickedItems(items: Array<TransferItem>, category: string): void {
+    if (items.length === 0 || this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
+    items.forEach((item: TransferItem): void => {
+      if (!this.fileCatalog.some((entry: TransferItem) => entry.id === item.id)) {
+        this.fileCatalog = [...this.fileCatalog, item]
+      }
+      if (!this.sendItems.some((entry: TransferItem) => entry.id === item.id)) {
+        this.sendItems = [...this.sendItems, item]
+      }
+    })
+    this.fileCategory = category
+    this.markSelectedState()
+  }
+
+  private async choosePhotos(): Promise<void> {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
+    try {
+      this.addPickedItems(await platformService.selectPhotos(), 'photos')
+    } catch (error) {
+      let progress: TransferProgress = new TransferProgress()
+      progress.stage = TransferStage.ERROR
+      progress.title = '选择照片失败'
+      progress.errorMessage = (error as Error).message
+      this.sendState = progress
+    }
+  }
+
+  private isPhoto(item: TransferItem): boolean {
+    return item.kind === '照片' || /\.(jpg|jpeg|png|webp|heic|gif|bmp)$/i.test(item.name)
+  }
+
+  private isSelected(item: TransferItem): boolean {
+    return this.sendItems.some((entry: TransferItem) => entry.id === item.id)
+  }
+
+  private photoGridHeight(): number {
+    let rows: number = Math.ceil(this.fileCatalog.filter((item: TransferItem) => this.isPhoto(item)).length / 3)
+    return rows * ((this.contentWidth - 8) / 3 + 4) - 4
+  }
+
+  private toggleFile(item: TransferItem): void {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
+    this.sendItems = this.isSelected(item) ?
+      this.sendItems.filter((entry: TransferItem) => entry.id !== item.id) : [...this.sendItems, item]
+    this.markSelectedState()
+  }
+
+  private selectionSize(): string {
+    if (this.sendItems.some((item: TransferItem) => item.sizeLabel.length === 0 || item.kind === '文件夹')) {
+      return '大小待确认'
+    }
+    return this.formatBytes(this.sendItems.reduce((total: number, item: TransferItem) => total + item.sizeBytes, 0))
+  }
+
+  private deviceTargets(): Array<DeviceTarget> {
+    let targets: Array<DeviceTarget> = this.pairedDevices.map((device: PairedDevice): DeviceTarget => {
+      let target: DeviceTarget = new DeviceTarget()
+      target.id = device.id
+      target.name = device.name
+      target.deviceType = device.deviceType
+      target.os = device.os
+      target.paired = true
+      target.online = device.online && device.pairingStatus === 'active'
+      return target
+    })
+    this.nearbyDevices.forEach((device: NearbyDevice): void => {
+      if (!targets.some((target: DeviceTarget) => target.id === device.id)) {
+        let target: DeviceTarget = new DeviceTarget()
+        target.id = device.id
+        target.name = device.name
+        target.deviceType = device.deviceType
+        target.os = device.os
+        target.online = true
+        targets.push(target)
+      }
+    })
+    return targets
+  }
+
+  private deviceIcon(deviceType: string): Resource {
+    let type: string = deviceType.toLowerCase()
+    if (/tablet|pad/.test(type)) {
+      return $r('app.media.ux_tablet')
+    }
+    if (/computer|desktop|laptop|pc|mac/.test(type)) {
+      return $r('app.media.ux_laptop')
+    }
+    return $r('app.media.ux_phone')
+  }
+
+  private targetKey(target: DeviceTarget): string {
+    return target.id + ':' + target.name + ':' + target.deviceType + ':' + target.os + ':' + target.online
+  }
+
+  private navIcon(section: NavSection): Resource {
+    return section === NavSection.DEVICES ? $r('app.media.ux_wifi') :
+      section === NavSection.SEND ? $r('app.media.ux_plus') : $r('app.media.ux_transfer')
+  }
+
+  private navSelected(section: NavSection): boolean {
+    return this.activeSection === section ||
+      ((this.activeSection === NavSection.RECEIVE || this.activeSection === NavSection.SETTINGS ||
+      this.activeSection === NavSection.PAIRING) && this.returnSection === section)
+  }
+
+  private iconColor(color: ResourceColor): Array<number> {
+    let value: number = typeof color === 'number' ? color : typeof color === 'string' ?
+      Number.parseInt(color.replace('#', ''), 16) :
+      this.getUIContext().getHostContext()?.resourceManager.getColorSync(color.id) ?? 0x202224
+    return [
+      0, 0, 0, 0, ((value >> 16) & 255) / 255,
+      0, 0, 0, 0, ((value >> 8) & 255) / 255,
+      0, 0, 0, 0, (value & 255) / 255,
+      0, 0, 0, 1, 0
+    ]
+  }
+
+  private beginDeviceTransfer(target: DeviceTarget): void {
+    this.showDeviceSheet = false
+    if (this.sendState.stage === TransferStage.SHARING) {
+      this.activeSection = NavSection.SEND
+      return
+    }
+    this.selectedTarget = target
+    this.activeSection = NavSection.SEND
+    if (this.sendItems.length === 0) {
+      this.chooseFiles()
+    }
+  }
+
+  private selectRecipient(target: DeviceTarget): void {
+    if (!target.online || this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
+    if (this.sendItems.length === 0) {
+      this.beginDeviceTransfer(target)
+      return
+    }
+    this.selectedTarget = target
+    this.showDeviceSheet = false
+    this.startShare()
+  }
+
+  private deviceThreads(): Array<DeviceThread> {
+    let threads: Array<DeviceThread> = []
+    let targets: Array<DeviceTarget> = this.deviceTargets()
+    this.historyEntries.forEach((entry: HistoryEntry): void => {
+      let id: string = entry.peerId.length > 0 ? entry.peerId : 'ticket'
+      let thread: DeviceThread | undefined = threads.find((item: DeviceThread) => item.id === id)
+      if (thread === undefined) {
+        thread = new DeviceThread()
+        thread.id = id
+        thread.name = entry.peerName.length > 0 ? entry.peerName : '票据传输'
+        let target: DeviceTarget | undefined = targets.find((item: DeviceTarget) => item.id === id)
+        if (target !== undefined) {
+          thread.name = target.name
+          thread.deviceType = target.deviceType
+          thread.online = target.online
+        }
+        threads.push(thread)
+      }
+      thread.entries.push(entry)
+    })
+    targets.filter((target: DeviceTarget) => target.paired).forEach((target: DeviceTarget): void => {
+      if (!threads.some((thread: DeviceThread) => thread.id === target.id)) {
+        let thread: DeviceThread = new DeviceThread()
+        thread.id = target.id
+        thread.name = target.name
+        thread.deviceType = target.deviceType
+        thread.online = target.online
+        threads.push(thread)
+      }
+    })
+    return threads
+  }
+
+  private currentThread(): DeviceThread {
+    return this.deviceThreads().find((thread: DeviceThread) => thread.id === this.activeThreadId) ??
+      new DeviceThread()
+  }
+
+  private historyTime(timestamp: string): string {
+    let date: Date = new Date(timestamp)
+    if (!Number.isFinite(date.getTime())) {
+      return timestamp
+    }
+    return (date.getMonth() + 1) + '月' + date.getDate() + '日 ' +
+      date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0')
   }
 
   private async chooseReceiveTarget(): Promise<void> {
@@ -575,34 +820,79 @@ export struct AppShell {
     return this.viewportHeight < 620
   }
 
+  private handleBack(): boolean {
+    if (this.showColorPicker) {
+      this.showColorPicker = false
+      this.pickerEditing = false
+      return true
+    }
+    if (this.showDeviceSheet) {
+      this.showDeviceSheet = false
+      return true
+    }
+    if (this.activeSection === NavSection.RECEIVE || this.activeSection === NavSection.SETTINGS ||
+      this.activeSection === NavSection.PAIRING) {
+      this.activeSection = this.returnSection
+      return true
+    }
+    if (this.activeSection === NavSection.HISTORY && this.activeThreadId.length > 0) {
+      this.activeThreadId = ''
+      return true
+    }
+    if (this.activeSection !== NavSection.DEVICES) {
+      this.activeSection = NavSection.DEVICES
+      return true
+    }
+    return false
+  }
+
+  private selectMainSection(section: NavSection): void {
+    this.activeSection = section
+    if (section === NavSection.HISTORY) {
+      this.activeThreadId = ''
+      this.refreshHistory()
+    }
+  }
+
+  private openSecondary(section: NavSection): void {
+    if (this.activeSection !== NavSection.RECEIVE && this.activeSection !== NavSection.SETTINGS &&
+      this.activeSection !== NavSection.PAIRING) {
+      this.returnSection = this.activeSection
+    }
+    this.activeSection = section
+  }
+
   private navTitle(section: NavSection): string {
     if (section === NavSection.SEND) {
-      return '发送'
+      return '文件'
     }
     if (section === NavSection.RECEIVE) {
       return '接收'
     }
     if (section === NavSection.DEVICES) {
-      return '设备'
+      return '附近'
     }
     if (section === NavSection.HISTORY) {
-      return '历史'
+      return '往来'
+    }
+    if (section === NavSection.PAIRING) {
+      return '设备配对'
     }
     return '设置'
   }
 
   private sectionSubtitle(): string {
     if (this.activeSection === NavSection.SEND) {
-      return '选择文件，生成票据，分享给对方。'
+      return '本机内容'
     }
     if (this.activeSection === NavSection.RECEIVE) {
       return '粘贴票据，保存到这台设备。'
     }
     if (this.activeSection === NavSection.DEVICES) {
-      return '找到设备，再建立连接。'
+      return this.deviceTargets().filter((target: DeviceTarget) => target.online).length + ' 台设备在线'
     }
     if (this.activeSection === NavSection.HISTORY) {
-      return '每次往来，一目了然。'
+      return '文件在设备之间'
     }
     return '这台设备的偏好。'
   }
@@ -630,6 +920,13 @@ export struct AppShell {
   }
 
   private async startShare(): Promise<void> {
+    if (this.sendItems.length === 0 || this.sendState.stage === TransferStage.SHARING) {
+      return
+    }
+    let target: DeviceTarget = this.selectedTarget
+    let peer: TransferPeer = new TransferPeer()
+    let invited: boolean = false
+    this.sendInviteStatus = ''
     let pending: TransferProgress = new TransferProgress()
     pending.stage = TransferStage.SHARING
     pending.title = '正在启动共享'
@@ -637,10 +934,15 @@ export struct AppShell {
     this.sendState = pending
     await engineService.send(this.sendItems, (progress: TransferProgress): void => {
       this.sendState = progress
+      if (!invited && target.id.length > 0 && progress.stage === TransferStage.SHARING &&
+        progress.ticket.length > 0) {
+        invited = true
+        this.inviteTransfer(target.id, target.paired, peer)
+      }
       if (progress.stage === TransferStage.COMPLETED) {
         this.refreshHistory()
       }
-    })
+    }, peer)
   }
 
   private async startReceive(): Promise<void> {
@@ -655,7 +957,7 @@ export struct AppShell {
       if (progress.stage === TransferStage.COMPLETED) {
         this.refreshHistory()
       }
-    })
+    }, this.receivePeer)
   }
 
   private async parseReceiveMetadata(): Promise<void> {
@@ -742,7 +1044,7 @@ export struct AppShell {
     }
   }
 
-  private async inviteTransfer(deviceId: string, paired: boolean): Promise<void> {
+  private async inviteTransfer(deviceId: string, paired: boolean, peer?: TransferPeer): Promise<void> {
     if (this.sendState.ticket.length === 0) {
       this.sendInviteStatus = '请先开始共享并等待真实票据生成。'
       return
@@ -756,6 +1058,10 @@ export struct AppShell {
         this.sendState.itemCount,
         this.sendState.totalBytes
       )
+      if (delivered && peer !== undefined) {
+        peer.id = deviceId
+        peer.name = this.selectedTarget.name
+      }
       this.sendInviteStatus = delivered ? '设备邀请已送达，等待对方确认。' : '设备当前无法接收邀请。'
     } catch (error) {
       this.sendInviteStatus = '设备邀请失败：' + (error as Error).message
@@ -794,7 +1100,11 @@ export struct AppShell {
         return
       }
       this.receiveTicket = invite.ticket
-      this.activeSection = NavSection.RECEIVE
+      let peer: TransferPeer = new TransferPeer()
+      peer.id = invite.endpointId
+      peer.name = invite.senderName
+      this.receivePeer = peer
+      this.openSecondary(NavSection.RECEIVE)
       this.receiveInviteStatus = '已接受邀请。请选择保存位置后手动开始接收。'
       await this.parseReceiveMetadata()
     } catch (error) {
@@ -864,21 +1174,17 @@ export struct AppShell {
   private buildSidebar(): void {
     Column({ space: 8 }) {
       Column({ space: 4 }) {
-        this.buildNavButton(NavSection.SEND)
-        this.buildNavButton(NavSection.RECEIVE)
         this.buildNavButton(NavSection.DEVICES)
+        this.buildNavButton(NavSection.SEND)
         this.buildNavButton(NavSection.HISTORY)
-        this.buildNavButton(NavSection.SETTINGS)
       }
       .margin({ top: 16 })
 
       Blank()
 
-      this.buildNoticePanel({
-        title: '引擎状态',
-        status: this.engineSnapshot.availability === EngineAvailability.UNAVAILABLE ? '未接入' : '可用',
-        detail: this.engineSnapshot.message
-      })
+      Text(this.nodeSnapshot.networkReady ? '网络已连接' : '网络未连接')
+        .fontSize(12)
+        .fontColor($r('app.color.text_secondary'))
     }
     .padding(16)
     .width(this.breakpoint === 'lg' ? 220 : 188)
@@ -889,98 +1195,154 @@ export struct AppShell {
 
   @Builder
   private buildNavButton(section: NavSection): void {
-    Row() {
+    Button() {
+      Row({ space: 12 }) {
+        Image(this.navIcon(section))
+          .width(22)
+          .height(22)
+          .colorFilter(this.iconColor(this.navSelected(section) ? this.themeAccent : $r('app.color.text_secondary')))
       Text(this.navTitle(section))
         .fontSize($r('app.float.body_m'))
-        .fontColor(this.activeSection === section ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
+        .fontColor(this.navSelected(section) ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Blank()
+      }
     }
+    .type(ButtonType.Normal)
+    .width('100%')
+    .height(48)
     .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-    .backgroundColor(this.activeSection === section ? this.themeSelected : Color.Transparent)
+    .backgroundColor(this.navSelected(section) ? this.themeSelected : Color.Transparent)
     .animation({ duration: 180, curve: Curve.EaseOut })
     .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
-      this.activeSection = section
+      this.selectMainSection(section)
     })
   }
 
   @Builder
-  private buildTransferMode(): void {
-    Row({ space: 4 }) {
-      Button('发送')
+  private buildAppHeader(): void {
+    Row({ space: 8 }) {
+      if (this.activeSection === NavSection.RECEIVE || this.activeSection === NavSection.SETTINGS ||
+        this.activeSection === NavSection.PAIRING ||
+        (this.activeSection === NavSection.HISTORY && this.activeThreadId.length > 0)) {
+        Button() {
+          Image($r('app.media.ux_chevron'))
+            .width(22)
+            .height(22)
+            .rotate({ angle: 180 })
+            .colorFilter(this.iconColor($r('app.color.text_primary')))
+        }
+          .type(ButtonType.Normal)
+          .width(44)
+          .height(44)
+          .backgroundColor(Color.Transparent)
+          .accessibilityText('返回')
+          .onClick(() => {
+            if (this.activeSection === NavSection.HISTORY) {
+              this.activeThreadId = ''
+            } else {
+              this.activeSection = this.returnSection
+            }
+          })
+      } else {
+        Image($r('app.media.dashbeam_logo'))
+          .width(24)
+          .height(24)
+          .borderRadius(5)
+      }
+      Text('DashBeam')
+        .fontSize(20)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+      Blank()
+      if (this.activeSection === NavSection.DEVICES) {
+        Button() {
+          Image($r('app.media.ux_plus')).width(22).height(22).colorFilter(this.iconColor($r('app.color.text_primary')))
+        }
         .type(ButtonType.Normal)
-        .layoutWeight(1)
+        .width(44)
         .height(44)
-        .fontColor(this.activeSection === NavSection.SEND ? $r('app.color.text_primary') :
-          $r('app.color.text_secondary'))
-        .backgroundColor(this.activeSection === NavSection.SEND ? this.themeSelected : Color.Transparent)
-        .animation({ duration: 180, curve: Curve.EaseOut })
-        .borderRadius($r('app.float.radius_s'))
+        .backgroundColor(Color.Transparent)
+        .accessibilityText('添加设备')
         .onClick(() => {
-          this.activeSection = NavSection.SEND
+          this.openSecondary(NavSection.PAIRING)
         })
-      Button('接收')
+      }
+      Button() {
+        Image($r('app.media.ux_receive')).width(22).height(22).colorFilter(this.iconColor($r('app.color.text_primary')))
+      }
         .type(ButtonType.Normal)
-        .layoutWeight(1)
+        .width(44)
         .height(44)
-        .fontColor(this.activeSection === NavSection.RECEIVE ? $r('app.color.text_primary') :
-          $r('app.color.text_secondary'))
-        .backgroundColor(this.activeSection === NavSection.RECEIVE ? this.themeSelected : Color.Transparent)
-        .animation({ duration: 180, curve: Curve.EaseOut })
-        .borderRadius($r('app.float.radius_s'))
+        .backgroundColor(Color.Transparent)
+        .accessibilityText('接收文件')
         .onClick(() => {
-          this.activeSection = NavSection.RECEIVE
+          this.openSecondary(NavSection.RECEIVE)
+        })
+      Button() {
+        Image($r('app.media.ux_settings')).width(22).height(22).colorFilter(this.iconColor($r('app.color.text_primary')))
+      }
+        .type(ButtonType.Normal)
+        .width(44)
+        .height(44)
+        .backgroundColor(Color.Transparent)
+        .accessibilityText('设置')
+        .onClick(() => {
+          this.openSecondary(NavSection.SETTINGS)
         })
     }
-    .padding(4)
+    .padding({ left: 20, right: 12 })
+    .height(60)
     .width('100%')
     .backgroundColor($r('app.color.glass_surface'))
-    .backgroundBlurStyle(BlurStyle.Thin)
-    .border({ width: 1, color: $r('app.color.glass_edge') })
-    .borderRadius(12)
-    .shadow({ radius: 12, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 3 })
+    .bindSheet(this.showDeviceSheet, this.buildDeviceSheet(), {
+      height: SheetSize.LARGE,
+      backgroundColor: $r('app.color.app_background'),
+      onDisappear: () => {
+        this.showDeviceSheet = false
+      }
+    })
   }
 
   @Builder
   private buildBottomNav(): void {
     Row() {
-      this.buildBottomButton(NavSection.SEND)
       this.buildBottomButton(NavSection.DEVICES)
+      this.buildBottomButton(NavSection.SEND)
       this.buildBottomButton(NavSection.HISTORY)
-      this.buildBottomButton(NavSection.SETTINGS)
     }
-    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
-    .margin({ left: 12, right: 12, bottom: 10 })
+    .padding({ left: 18, right: 18, top: 4, bottom: 6 })
     .backgroundColor($r('app.color.glass_surface'))
-    .backgroundBlurStyle(BlurStyle.Thin)
-    .border({ width: 1, color: $r('app.color.glass_edge') })
-    .borderRadius(14)
-    .shadow({ radius: 18, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 5 })
+    .border({ width: { top: 1 }, color: $r('app.color.divider') })
   }
 
   @Builder
   private buildBottomButton(section: NavSection): void {
-    Column({ space: 4 }) {
-      Text(section === NavSection.SEND ? '传输' : section === NavSection.HISTORY ? '记录' : this.navTitle(section))
+    Button() {
+      Column({ space: 5 }) {
+      Image(this.navIcon(section))
+        .width(22)
+        .height(22)
+        .colorFilter(this.iconColor(this.navSelected(section) ? this.themeAccent : $r('app.color.text_secondary')))
+      Text(this.navTitle(section))
         .fontSize($r('app.float.body_s'))
-        .fontColor(this.activeSection === section ||
-          (section === NavSection.SEND && this.activeSection === NavSection.RECEIVE) ?
-          $r('app.color.text_primary') : $r('app.color.text_secondary'))
+        .fontWeight(this.navSelected(section) ? FontWeight.Medium : FontWeight.Regular)
+        .fontColor(this.navSelected(section) ? $r('app.color.text_primary') : $r('app.color.text_secondary'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
     }
+    .type(ButtonType.Normal)
     .layoutWeight(1)
-    .height(48)
-    .justifyContent(FlexAlign.Center)
-    .backgroundColor(this.activeSection === section ||
-      (section === NavSection.SEND && this.activeSection === NavSection.RECEIVE) ?
-      this.themeSelected : Color.Transparent)
+    .height(60)
+    .backgroundColor(Color.Transparent)
+    .accessibilityText(this.navTitle(section) + (this.navSelected(section) ? '，已选中' : ''))
     .animation({ duration: 180, curve: Curve.EaseOut })
     .borderRadius($r('app.float.radius_s'))
     .onClick(() => {
-      this.activeSection = section
+      this.selectMainSection(section)
     })
   }
 
@@ -989,10 +1351,9 @@ export struct AppShell {
     Scroll() {
       Column({ space: 14 }) {
         Column({ space: 4 }) {
-          Text(this.activeSection === NavSection.SEND ? '发送文件' :
-            this.activeSection === NavSection.RECEIVE ? '接收文件' :
-            this.activeSection === NavSection.DEVICES ? '附近设备' :
-            this.activeSection === NavSection.HISTORY ? '传输记录' : '设置')
+          Text(this.activeSection === NavSection.RECEIVE ? '接收文件' :
+            this.activeSection === NavSection.HISTORY && this.activeThreadId.length > 0 ?
+            this.currentThread().name : this.navTitle(this.activeSection))
             .fontSize($r('app.float.title_xl'))
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.text_primary'))
@@ -1005,12 +1366,8 @@ export struct AppShell {
             .width('100%')
         }
         .alignItems(HorizontalAlign.Start)
-        .height(94)
+        .padding({ top: 12, bottom: 8 })
         .width('100%')
-
-        if (this.activeSection === NavSection.SEND || this.activeSection === NavSection.RECEIVE) {
-          this.buildTransferMode()
-        }
 
         if (this.activeSection === NavSection.SEND) {
           this.buildSendSection()
@@ -1020,13 +1377,19 @@ export struct AppShell {
           this.buildDevicesSection()
         } else if (this.activeSection === NavSection.HISTORY) {
           this.buildHistorySection()
+        } else if (this.activeSection === NavSection.PAIRING) {
+          this.buildPairingSection()
         } else {
           this.buildSettingsSection()
         }
       }
       .justifyContent(FlexAlign.Start)
-      .padding({ left: 20, right: 20, top: 12, bottom: this.breakpoint === 'sm' ? 24 : 20 })
+      .padding({ left: 22, right: 22, top: 0, bottom: 24 })
+      .constraintSize({ maxWidth: 760 })
       .width('100%')
+      .onAreaChange((_oldValue: Area, newValue: Area) => {
+        this.contentWidth = Math.max(120, Number(newValue.width) - 44)
+      })
     }
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
@@ -1161,236 +1524,172 @@ export struct AppShell {
   @Builder
   private buildSendSection(): void {
     Column({ space: 14 }) {
-      Text('选择内容')
-        .fontSize($r('app.float.body_m'))
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .width('100%')
-
-      if (this.sendItems.length === 0) {
-        Column({ space: 7 }) {
-          Text('+')
-            .fontSize(30)
-            .fontColor($r('app.color.text_primary'))
-          Text('添加文件')
-            .fontSize($r('app.float.body_m'))
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary'))
-          Text('选择要发送的文件或照片')
-            .fontSize($r('app.float.body_s'))
-            .fontColor($r('app.color.text_secondary'))
-        }
-        .alignItems(HorizontalAlign.Start)
-        .justifyContent(FlexAlign.Center)
-        .padding(18)
-        .width('100%')
-        .height(132)
-        .backgroundColor($r('app.color.glass_surface'))
-        .border({ width: 1, color: $r('app.color.glass_edge') })
-        .borderRadius($r('app.float.radius_s'))
-        .shadow({ radius: 14, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 4 })
-        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
-        .onClick(() => {
-          this.chooseFiles()
-        })
-      } else {
-        ForEach(this.sendItems, (item: TransferItem) => {
-          Row() {
-            Column({ space: 2 }) {
-              Text(item.name)
-                .fontSize($r('app.float.body_m'))
-                .fontColor($r('app.color.text_primary'))
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .width('100%')
-              Text(item.kind + (item.sizeLabel.length > 0 ? ' · ' + item.sizeLabel : ''))
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .width('100%')
-            }
-            .layoutWeight(1)
-            Button('移除')
-              .type(ButtonType.Normal)
-              .height(44)
-              .fontSize($r('app.float.caption'))
-              .fontColor($r('app.color.text_secondary'))
-              .backgroundColor(this.themeSelected)
-              .borderRadius($r('app.float.radius_s'))
-              .onClick(() => {
-                this.sendItems = this.sendItems.filter((entry: TransferItem) => entry.id !== item.id)
-                this.markSelectedState()
-              })
-          }
-          .padding(12)
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
-          .borderRadius($r('app.float.radius_s'))
-          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
-        }, (item: TransferItem) => item.id)
+      Row({ space: 24 }) {
+        ForEach(['photos', 'documents', 'all'], (category: string) => {
+          Button(category === 'photos' ? '照片' : category === 'documents' ? '文档' : '全部')
+            .type(ButtonType.Normal)
+            .height(44)
+            .fontSize(14)
+            .fontWeight(this.fileCategory === category ? FontWeight.Medium : FontWeight.Regular)
+            .fontColor(this.fileCategory === category ? $r('app.color.text_primary') :
+              $r('app.color.text_secondary'))
+            .backgroundColor(Color.Transparent)
+            .borderRadius(0)
+            .border({ width: { bottom: 2 }, color: this.fileCategory === category ?
+              this.themeAccent : Color.Transparent })
+            .onClick(() => {
+              this.fileCategory = category
+            })
+        }, (category: string) => category)
       }
-
+      .width('100%')
+      .border({ width: { bottom: 1 }, color: $r('app.color.divider') })
       Row({ space: 8 }) {
-        Button('文件')
+        Button('添加照片')
           .type(ButtonType.Normal)
           .layoutWeight(1)
           .height(44)
           .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
+          .backgroundColor($r('app.color.panel_surface'))
           .borderRadius($r('app.float.radius_s'))
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            this.choosePhotos()
+          })
+        Button('添加文件')
+          .type(ButtonType.Normal)
+          .layoutWeight(1)
+          .height(44)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor($r('app.color.panel_surface'))
+          .borderRadius($r('app.float.radius_s'))
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
           .onClick(() => {
             this.chooseFiles()
           })
-        Button('文件夹')
+      }
+      if (this.fileCategory !== 'documents' && this.fileCatalog.some((item: TransferItem) => this.isPhoto(item))) {
+        Grid() {
+          ForEach(this.fileCatalog.filter((item: TransferItem) => this.isPhoto(item)), (item: TransferItem) => {
+            GridItem() {
+              Button() {
+                Stack({ alignContent: Alignment.TopEnd }) {
+                  Image(item.uri)
+                    .width('100%')
+                    .height('100%')
+                    .objectFit(ImageFit.Cover)
+                  Text(this.isSelected(item) ? (this.sendItems.findIndex((entry: TransferItem) =>
+                    entry.id === item.id) + 1).toString() : '')
+                    .fontSize(12)
+                    .fontColor(this.themeActionText)
+                    .width(22)
+                    .height(22)
+                    .textAlign(TextAlign.Center)
+                    .backgroundColor(this.isSelected(item) ? this.themeAccent : '#66000000')
+                    .border({ width: 1, color: '#FFFFFF' })
+                    .borderRadius(11)
+                    .margin(8)
+                }
+              }
+              .type(ButtonType.Normal)
+              .padding(0)
+              .width('100%')
+              .aspectRatio(1)
+              .borderRadius(4)
+              .border({ width: this.isSelected(item) ? 3 : 0, color: this.themeAccent })
+              .accessibilityText(item.name + (this.isSelected(item) ? '，已选择' : '，未选择'))
+              .enabled(this.sendState.stage !== TransferStage.SHARING)
+              .onClick(() => {
+                this.toggleFile(item)
+              })
+            }
+          }, (item: TransferItem) => item.id)
+        }
+        .columnsTemplate('1fr 1fr 1fr')
+        .columnsGap(4)
+        .rowsGap(4)
+        .width('100%')
+        .height(this.photoGridHeight())
+      }
+      if (this.fileCategory !== 'photos') {
+        ForEach(this.fileCatalog.filter((item: TransferItem) => !this.isPhoto(item)), (item: TransferItem) => {
+          Button() {
+            Row({ space: 12 }) {
+              Text(item.kind === '文件夹' ? 'DIR' : item.name.split('.').pop()?.toUpperCase().slice(0, 4) ?? 'FILE')
+                .fontSize(11)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary'))
+                .width(38)
+                .height(46)
+                .textAlign(TextAlign.Center)
+                .backgroundColor($r('app.color.panel_surface'))
+                .borderRadius(4)
+              Column({ space: 5 }) {
+                Text(item.name)
+                  .fontSize(14)
+                  .fontColor($r('app.color.text_primary'))
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                Text(item.kind !== '文件夹' && item.sizeLabel.length > 0 ? this.formatBytes(item.sizeBytes) : item.kind)
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+              }
+              .layoutWeight(1)
+              Text(this.isSelected(item) ? '✓' : '')
+                .width(22)
+                .height(22)
+                .fontSize(13)
+                .textAlign(TextAlign.Center)
+                .fontColor(this.themeActionText)
+                .backgroundColor(this.isSelected(item) ? this.themeAccent : Color.Transparent)
+                .border({ width: 1, color: this.isSelected(item) ? this.themeAccent : $r('app.color.divider') })
+                .borderRadius(11)
+            }
+            .padding({ top: 12, bottom: 12 })
+          }
           .type(ButtonType.Normal)
-          .layoutWeight(1)
+          .width('100%')
+          .padding(0)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(0)
+          .border({ width: { bottom: 1 }, color: $r('app.color.divider') })
+          .accessibilityText(item.name + (this.isSelected(item) ? '，已选择' : '，未选择'))
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            this.toggleFile(item)
+          })
+        }, (item: TransferItem) => item.id)
+      }
+      if (!this.fileCatalog.some((item: TransferItem) => this.fileCategory === 'all' ||
+        (this.fileCategory === 'photos' ? this.isPhoto(item) : !this.isPhoto(item)))) {
+        Column({ space: 12 }) {
+          Image($r('app.media.ux_plus')).width(32).height(32).colorFilter(this.iconColor($r('app.color.text_secondary')))
+          Text(this.fileCategory === 'photos' ? '尚未添加照片' : '尚未添加文件')
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 48, bottom: 48 })
+      }
+      if (this.folderSelectionSupported) {
+        Button('添加文件夹')
+          .type(ButtonType.Normal)
           .height(44)
-          .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
+          .fontColor($r('app.color.text_secondary'))
+          .backgroundColor(Color.Transparent)
           .borderRadius($r('app.float.radius_s'))
-          .enabled(this.folderSelectionSupported)
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
           .onClick(() => {
             this.chooseFolder()
           })
       }
-
-      Row({ space: 8 }) {
-        Button('清空')
-          .type(ButtonType.Normal)
-          .layoutWeight(1)
-          .height(44)
-          .fontColor($r('app.color.text_secondary'))
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
-          .borderRadius($r('app.float.radius_s'))
-          .enabled(this.sendItems.length > 0)
-          .onClick(() => {
-            this.clearSendItems()
-          })
-        Button('开始共享')
-          .type(ButtonType.Normal)
-          .layoutWeight(1)
-          .height(44)
-          .fontColor(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING ?
-            this.themeActionText : $r('app.color.text_secondary'))
-          .backgroundColor(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING ?
-            this.themeAccent : this.themeSelected)
-          .border({ width: this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING &&
-            this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
-          .borderRadius($r('app.float.radius_s'))
-          .enabled(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING)
-          .onClick(() => {
-            this.startShare()
-          })
-      }
-
-      if (this.sendState.stage !== TransferStage.IDLE) {
+      if (this.sendState.stage !== TransferStage.IDLE && this.sendState.stage !== TransferStage.SELECTED) {
         this.buildProgressPanel({ progress: this.sendState })
       }
-
-      if (this.sendState.stage !== TransferStage.SHARING) {
-        Row({ space: 10 }) {
-          Column({ space: 4 }) {
-            Text('附近设备')
-              .fontSize($r('app.float.body_m'))
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.text_primary'))
-            Text(this.nearbyDevices.length > 0 ? this.nearbyDevices[0].name :
-              this.pairedDevices.length > 0 ? this.pairedDevices[0].name : '暂未发现设备')
-              .fontSize($r('app.float.body_s'))
-              .fontColor($r('app.color.text_secondary'))
-          }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
-          Button('查看设备')
-            .type(ButtonType.Normal)
-            .height(44)
-            .fontColor($r('app.color.text_primary'))
-            .backgroundColor(this.themeSelected)
-            .borderRadius($r('app.float.radius_s'))
-            .onClick(() => {
-              this.activeSection = NavSection.DEVICES
-            })
-        }
-        .padding(14)
-        .backgroundColor($r('app.color.glass_surface'))
-        .border({ width: 1, color: $r('app.color.glass_edge') })
-        .borderRadius($r('app.float.radius_s'))
-        .shadow({ radius: 12, color: $r('app.color.glass_shadow'), offsetX: 0, offsetY: 3 })
-      }
-
-      if (this.sendState.stage === TransferStage.SHARING && this.sendState.ticket.length > 0) {
-        Text('发送到设备')
-          .fontSize($r('app.float.body_m'))
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .width('100%')
-        if (this.sendInviteStatus.length > 0) {
-          this.buildPlainPanel({ title: '邀请状态', detail: this.sendInviteStatus })
-        }
-        if (this.pairedDevices.length === 0 && this.nearbyDevices.length === 0) {
-          this.buildPlainPanel({ title: '暂无目标', detail: 'Iroh NodeService 当前没有已配对或附近设备。' })
-        }
-        ForEach(this.pairedDevices, (device: PairedDevice) => {
-          Row() {
-            Column({ space: 2 }) {
-              Text(device.name)
-                .fontSize($r('app.float.body_m'))
-                .fontColor($r('app.color.text_primary'))
-                .width('100%')
-              Text(device.deviceType + ' · ' + device.status)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .width('100%')
-            }
-            .layoutWeight(1)
-            Button('邀请')
-              .type(ButtonType.Normal)
-              .height(44)
-              .fontColor(this.themeActionText)
-              .backgroundColor(this.themeAccent)
-              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
-              .borderRadius($r('app.float.radius_s'))
-              .enabled(device.pairingStatus === 'active')
-              .onClick(() => {
-                this.inviteTransfer(device.id, true)
-              })
-          }
-          .padding(12)
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
-          .borderRadius($r('app.float.radius_s'))
-        }, (device: PairedDevice) => 'paired-' + device.id)
-        ForEach(this.nearbyDevices, (device: NearbyDevice) => {
-          Row() {
-            Column({ space: 2 }) {
-              Text(device.name)
-                .fontSize($r('app.float.body_m'))
-                .fontColor($r('app.color.text_primary'))
-                .width('100%')
-              Text(device.deviceType + ' · ' + device.status)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-                .width('100%')
-            }
-            .layoutWeight(1)
-            Button('邀请')
-              .type(ButtonType.Normal)
-              .height(44)
-              .fontColor(this.themeActionText)
-              .backgroundColor(this.themeAccent)
-              .border({ width: this.themeActionText === '#000000' ? 1 : 0, color: '#000000' })
-              .borderRadius($r('app.float.radius_s'))
-              .onClick(() => {
-                this.inviteTransfer(device.id, false)
-              })
-          }
-          .padding(12)
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
-          .borderRadius($r('app.float.radius_s'))
-        }, (device: NearbyDevice) => 'nearby-' + device.id)
+      if (this.sendInviteStatus.length > 0) {
+        Text(this.sendInviteStatus).fontSize(13).fontColor($r('app.color.text_secondary')).width('100%')
       }
     }
     .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
@@ -1462,6 +1761,7 @@ export struct AppShell {
         .borderRadius($r('app.float.radius_s'))
         .onChange((value: string) => {
           this.receiveTicket = value
+          this.receivePeer = new TransferPeer()
           this.receivePreviewTitle = '尚未解析票据'
           this.receivePreviewDetail = value.trim().length > 0 ? '点击解析元数据以读取真实文件清单。' :
             '输入票据后可向发送方读取真实文件元数据。'
@@ -1551,6 +1851,339 @@ export struct AppShell {
 
   @Builder
   private buildDevicesSection(): void {
+    Column({ space: 16 }) {
+      Row() {
+        Text('我的设备').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary'))
+        Blank()
+        Text('已配对').fontSize(12).fontColor($r('app.color.text_secondary'))
+      }
+      .width('100%')
+      if (this.pairedDevices.length === 0) {
+        Text('还没有已配对设备')
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ top: 20, bottom: 20 })
+          .width('100%')
+      } else {
+        Grid() {
+          ForEach(this.deviceTargets().filter((target: DeviceTarget) => target.paired), (target: DeviceTarget) => {
+            GridItem() {
+              Button() {
+                Column({ space: 10 }) {
+                  Image(this.deviceIcon(target.deviceType))
+                    .width(36)
+                    .height(36)
+                    .colorFilter(this.iconColor($r('app.color.text_primary')))
+                  Text(target.name)
+                    .fontSize(14)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                  Text((target.online ? '在线' : '离线') + (target.os.length > 0 ? ' · ' + target.os : ''))
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_secondary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .justifyContent(FlexAlign.Start)
+                .width('100%')
+              }
+              .type(ButtonType.Normal)
+              .width('100%')
+              .height(148)
+              .padding(16)
+              .backgroundColor($r('app.color.panel_surface'))
+              .border({ width: 1, color: $r('app.color.divider') })
+              .borderRadius(8)
+              .enabled(target.online)
+              .accessibilityText(target.name + (target.online ? '，在线，发送文件' : '，离线'))
+              .onClick(() => {
+                this.beginDeviceTransfer(target)
+              })
+            }
+          }, (target: DeviceTarget) => this.targetKey(target))
+        }
+        .columnsTemplate('1fr 1fr')
+        .columnsGap(10)
+        .rowsGap(10)
+        .width('100%')
+        .height(Math.ceil(this.pairedDevices.length / 2) * 158 - 10)
+      }
+      Text('其他设备')
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .width('100%')
+        .margin({ top: 8 })
+      if (!this.deviceTargets().some((target: DeviceTarget) => !target.paired)) {
+        Column({ space: 14 }) {
+          Image($r('app.media.ux_wifi')).width(32).height(32).colorFilter(this.iconColor($r('app.color.text_secondary')))
+          Text(this.settings.discoverable ? '附近暂无其他设备' : '附近发现已关闭')
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 36, bottom: 36 })
+      }
+      ForEach(this.deviceTargets().filter((target: DeviceTarget) => !target.paired), (target: DeviceTarget) => {
+        this.buildTargetRow({ target: target, recipient: false })
+      }, (target: DeviceTarget) => this.targetKey(target))
+      Row({ space: 12 }) {
+        Image($r('app.media.ux_phone')).width(22).height(22).colorFilter(this.iconColor($r('app.color.text_primary')))
+        Column({ space: 5 }) {
+          Text(this.settings.deviceName).fontSize(14).fontColor($r('app.color.text_primary')).width('100%')
+          Text((this.settings.discoverable ? '附近设备可发现' : '已关闭附近发现') + ' · 本机')
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ top: 20 })
+      .border({ width: { top: 1 }, color: $r('app.color.divider') })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private buildTargetRow(row: TargetRow): void {
+    Button() {
+      Row({ space: 12 }) {
+        Image(this.deviceIcon(row.target.deviceType))
+          .width(28)
+          .height(28)
+          .colorFilter(this.iconColor($r('app.color.text_primary')))
+        Column({ space: 5 }) {
+          Text(row.target.name)
+            .fontSize(15)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+          Text((row.target.os.length > 0 ? row.target.os + ' · ' : '') + (row.target.online ? '在线' : '离线'))
+            .fontSize(12)
+            .fontColor($r('app.color.text_secondary'))
+            .width('100%')
+        }
+        .layoutWeight(1)
+        Image($r('app.media.ux_chevron')).width(18).height(18).colorFilter(this.iconColor($r('app.color.text_secondary')))
+      }
+      .padding({ top: 16, bottom: 16 })
+    }
+    .type(ButtonType.Normal)
+    .padding(0)
+    .width('100%')
+    .backgroundColor(Color.Transparent)
+    .borderRadius(0)
+    .border({ width: { bottom: 1 }, color: $r('app.color.divider') })
+    .enabled(row.target.online)
+    .onClick(() => {
+      if (row.recipient) {
+        this.selectRecipient(row.target)
+      } else {
+        this.beginDeviceTransfer(row.target)
+      }
+    })
+  }
+
+  @Builder
+  private buildDeviceSheet(): void {
+    Scroll() {
+      Column({ space: 14 }) {
+        Text('发送到').fontSize(24).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary')).width('100%')
+        Text(this.sendItems.length > 0 ? '已选 ' + this.sendItems.length + ' 项 · ' + this.selectionSize() : '附近设备')
+          .fontSize(13)
+          .fontColor($r('app.color.text_secondary'))
+          .width('100%')
+        ForEach(this.deviceTargets(), (target: DeviceTarget) => {
+          this.buildTargetRow({ target: target, recipient: true })
+        }, (target: DeviceTarget) => this.targetKey(target))
+        if (this.deviceTargets().length === 0) {
+          Text('暂无在线设备').fontSize(14).fontColor($r('app.color.text_secondary')).padding({ top: 32, bottom: 32 })
+        }
+        Button(this.sendItems.length > 0 ? '使用分享票据' : '选择文件')
+          .type(ButtonType.Normal)
+          .height(48)
+          .width('100%')
+          .fontColor(this.themeActionText)
+          .backgroundColor(this.themeAccent)
+          .borderRadius(6)
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            this.selectedTarget = new DeviceTarget()
+            this.showDeviceSheet = false
+            this.activeSection = NavSection.SEND
+            if (this.sendItems.length > 0) {
+              this.startShare()
+            } else {
+              this.chooseFiles()
+            }
+          })
+      }
+      .width('100%')
+      .padding({ left: 22, right: 22, top: 20, bottom: 32 })
+    }
+    .align(Alignment.Top)
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  private buildTaskStrip(): void {
+    if (this.sendState.stage === TransferStage.SHARING) {
+      this.buildActiveTask({ progress: this.sendState, receive: false })
+    }
+    if (this.receiveState.stage === TransferStage.RECEIVING) {
+      this.buildActiveTask({ progress: this.receiveState, receive: true })
+    }
+  }
+
+  @Builder
+  private buildActiveTask(task: TaskPanel): void {
+    Button() {
+      Row({ space: 12 }) {
+        Image($r('app.media.ux_transfer')).width(22).height(22).colorFilter(this.iconColor(this.themeAccent))
+        Column({ space: 4 }) {
+          Text(task.progress.title).fontSize(13).fontColor($r('app.color.text_primary')).width('100%')
+          Text(task.progress.bytesLabel.length > 0 ? task.progress.bytesLabel : task.progress.detail)
+            .fontSize(11)
+            .fontColor($r('app.color.text_secondary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
+        .layoutWeight(1)
+        Text(Math.round(task.progress.progressRatio * 100) + '%').fontSize(16).fontColor($r('app.color.text_primary'))
+      }
+      .padding({ left: 22, right: 22, top: 12, bottom: 12 })
+    }
+    .type(ButtonType.Normal)
+    .padding(0)
+    .width('100%')
+    .backgroundColor(this.themeSelected)
+    .borderRadius(0)
+    .onClick(() => {
+      if (task.receive) {
+        this.openSecondary(NavSection.RECEIVE)
+      } else {
+        this.activeSection = NavSection.SEND
+      }
+    })
+  }
+
+  @Builder
+  private buildActionBar(): void {
+    if (this.activeSection === NavSection.DEVICES) {
+      Row({ space: 10 }) {
+        Button('接收')
+          .type(ButtonType.Normal)
+          .height(48)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor($r('app.color.panel_surface'))
+          .borderRadius(6)
+          .onClick(() => {
+            this.openSecondary(NavSection.RECEIVE)
+          })
+        Button('选择文件')
+          .type(ButtonType.Normal)
+          .layoutWeight(1)
+          .height(48)
+          .fontColor(this.themeActionText)
+          .backgroundColor(this.themeAccent)
+          .borderRadius(6)
+          .enabled(this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            this.beginDeviceTransfer(new DeviceTarget())
+          })
+      }
+      .padding({ left: 22, right: 22, top: 12, bottom: 12 })
+      .width('100%')
+      .backgroundColor($r('app.color.glass_surface'))
+    } else if (this.activeSection === NavSection.SEND) {
+      Column({ space: 10 }) {
+        Row() {
+          Text('已选 ' + this.sendItems.length + ' 项').fontSize(13).fontColor($r('app.color.text_primary'))
+          Blank()
+          Text(this.selectionSize()).fontSize(12).fontColor($r('app.color.text_secondary'))
+          Button() {
+            Image($r('app.media.ux_close')).width(18).height(18).colorFilter(this.iconColor($r('app.color.text_secondary')))
+          }
+          .type(ButtonType.Normal)
+          .width(44)
+          .height(44)
+          .backgroundColor(Color.Transparent)
+          .accessibilityText('清空选择')
+          .enabled(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            this.clearSendItems()
+          })
+        }
+        .width('100%')
+        if (this.selectedTarget.id.length > 0) {
+          Row() {
+            Text('发给 ' + this.selectedTarget.name)
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            Button('更换')
+              .type(ButtonType.Normal)
+              .height(44)
+              .fontColor($r('app.color.text_primary'))
+              .backgroundColor(Color.Transparent)
+              .enabled(this.sendState.stage !== TransferStage.SHARING)
+              .onClick(() => {
+                this.showDeviceSheet = true
+              })
+          }
+        }
+        Button('发送' + (this.sendItems.length > 0 ? ' ' + this.sendItems.length + ' 项' : ''))
+          .type(ButtonType.Normal)
+          .width('100%')
+          .height(48)
+          .fontColor(this.themeActionText)
+          .backgroundColor(this.themeAccent)
+          .borderRadius(6)
+          .enabled(this.sendItems.length > 0 && this.sendState.stage !== TransferStage.SHARING)
+          .onClick(() => {
+            if (this.selectedTarget.id.length > 0) {
+              this.startShare()
+            } else {
+              this.showDeviceSheet = true
+            }
+          })
+      }
+      .padding({ left: 22, right: 22, top: 4, bottom: 12 })
+      .width('100%')
+      .backgroundColor($r('app.color.glass_surface'))
+      .border({ width: { top: 1 }, color: $r('app.color.divider') })
+    } else if (this.activeSection === NavSection.HISTORY && this.activeThreadId.length === 0) {
+      Row() {
+        Button('新的传输')
+        .type(ButtonType.Normal)
+        .layoutWeight(1)
+        .height(48)
+        .fontColor(this.themeActionText)
+        .backgroundColor(this.themeAccent)
+        .borderRadius(6)
+        .enabled(this.sendState.stage !== TransferStage.SHARING)
+        .onClick(() => {
+          this.showDeviceSheet = true
+        })
+      }
+      .padding({ left: 22, right: 22, top: 12, bottom: 12 })
+      .width('100%')
+    }
+  }
+
+  @Builder
+  private buildPairingSection(): void {
     Column({ space: 12 }) {
       if (this.hasPendingNearbyPairRequest) {
         Column({ space: 8 }) {
@@ -1782,38 +2415,111 @@ export struct AppShell {
 
   @Builder
   private buildHistorySection(): void {
-    Column({ space: 12 }) {
-      if (this.historyEntries.length === 0) {
-        this.buildPlainPanel({ title: '还没有传输记录', detail: '完成发送或接收后，记录会显示在这里。' })
-      } else {
-        ForEach(this.historyEntries, (entry: HistoryEntry) => {
-          Column({ space: 4 }) {
-            Row() {
-              Text(entry.title)
-                .fontSize($r('app.float.body_m'))
-                .fontColor($r('app.color.text_primary'))
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-              Blank()
-              Text(entry.status)
-                .fontSize($r('app.float.caption'))
-                .fontColor($r('app.color.text_secondary'))
-            }
-            Text(entry.direction + ' · ' + entry.detail)
-              .fontSize($r('app.float.body_s'))
+    Column({ space: 0 }) {
+      if (this.activeThreadId.length > 0) {
+        if (this.currentThread().entries.length === 0) {
+          Text('尚无往来').fontSize(14).fontColor($r('app.color.text_secondary')).padding({ top: 40, bottom: 40 })
+        }
+        ForEach(this.currentThread().entries, (entry: HistoryEntry) => {
+          Column({ space: 8 }) {
+            Text(this.historyTime(entry.timestamp) + ' · ' + entry.direction)
+              .fontSize(12)
               .fontColor($r('app.color.text_secondary'))
               .width('100%')
-            Text(entry.timestamp)
-              .fontSize($r('app.float.caption'))
+            Text(entry.title)
+              .fontSize(16)
+              .fontColor($r('app.color.text_primary'))
+              .width('100%')
+            Text(entry.detail)
+              .fontSize(13)
               .fontColor($r('app.color.text_secondary'))
+              .width('100%')
+            Text(entry.status === 'completed' ? '已完成' : entry.status)
+              .fontSize(12)
+              .fontColor($r('app.color.text_primary'))
               .width('100%')
           }
-          .padding(12)
-          .backgroundColor($r('app.color.glass_surface'))
-          .border({ width: 1, color: $r('app.color.glass_edge') })
-          .borderRadius($r('app.float.radius_s'))
-          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
+          .padding({ top: 20, bottom: 20 })
+          .width('100%')
+          .border({ width: { bottom: 1 }, color: $r('app.color.divider') })
         }, (entry: HistoryEntry) => entry.id)
+        if (this.activeThreadId !== 'ticket') {
+          Button('发送文件')
+            .type(ButtonType.Normal)
+            .width('100%')
+            .height(48)
+            .margin({ top: 24 })
+            .backgroundColor(this.themeAccent)
+            .fontColor(this.themeActionText)
+            .borderRadius(6)
+            .enabled(this.deviceTargets().some((target: DeviceTarget) => target.id === this.activeThreadId && target.online))
+            .onClick(() => {
+              let target: DeviceTarget | undefined = this.deviceTargets().find((item: DeviceTarget) =>
+                item.id === this.activeThreadId)
+              if (target !== undefined) {
+                this.beginDeviceTransfer(target)
+              }
+            })
+        }
+      } else {
+        if (this.deviceThreads().length === 0) {
+          Column({ space: 14 }) {
+            Image($r('app.media.ux_transfer')).width(36).height(36).colorFilter(this.iconColor($r('app.color.text_secondary')))
+            Text('还没有往来记录').fontSize(14).fontColor($r('app.color.text_secondary'))
+          }
+          .width('100%')
+          .padding({ top: 60, bottom: 60 })
+        }
+        ForEach(this.deviceThreads(), (thread: DeviceThread) => {
+          Button() {
+            Row({ space: 14 }) {
+              Image(thread.id === 'ticket' ? $r('app.media.ux_transfer') : this.deviceIcon(thread.deviceType))
+                .width(42)
+                .height(42)
+                .padding(8)
+                .colorFilter(this.iconColor($r('app.color.text_primary')))
+                .backgroundColor($r('app.color.panel_surface'))
+                .borderRadius(8)
+              Column({ space: 8 }) {
+                Row({ space: 8 }) {
+                  Text(thread.name)
+                    .fontSize(15)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary'))
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(thread.entries.length > 0 ? this.historyTime(thread.entries[0].timestamp) : '')
+                    .fontSize(10)
+                    .fontColor($r('app.color.text_secondary'))
+                }
+                Text(thread.entries.length > 0 ? thread.entries[0].direction + ' · ' + thread.entries[0].title : '尚无往来')
+                  .fontSize(13)
+                  .fontColor($r('app.color.text_secondary'))
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%')
+                Text(thread.id === 'ticket' ? thread.entries.length + ' 次传输' :
+                  (thread.online ? '设备在线' : '设备离线') + ' · ' + thread.entries.length + ' 次往来')
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_secondary'))
+                  .width('100%')
+              }
+              .layoutWeight(1)
+            }
+            .padding({ top: 20, bottom: 20 })
+          }
+          .type(ButtonType.Normal)
+          .width('100%')
+          .padding(0)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(0)
+          .border({ width: { bottom: 1 }, color: $r('app.color.divider') })
+          .onClick(() => {
+            this.activeThreadId = thread.id
+          })
+        }, (thread: DeviceThread) => thread.id + ':' + thread.name + ':' + thread.online + ':' +
+          thread.entries.length + ':' + (thread.entries[0]?.id ?? ''))
       }
     }
     .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
@@ -2213,20 +2919,54 @@ export struct AppShell {
 
   build() {
     Column() {
+      this.buildAppHeader()
+      if (this.hasPendingTransferInvite && this.activeSection !== NavSection.RECEIVE) {
+        Button(this.pendingTransferInvite.senderName + ' · 收到 ' + this.pendingTransferInvite.fileCount + ' 项')
+          .type(ButtonType.Normal)
+          .width('100%')
+          .height(48)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .onClick(() => {
+            this.openSecondary(NavSection.RECEIVE)
+          })
+      }
+      if (this.hasPendingNearbyPairRequest && this.activeSection !== NavSection.PAIRING) {
+        Button(this.pendingNearbyPairRequest.senderName + ' · 请求配对')
+          .type(ButtonType.Normal)
+          .width('100%')
+          .height(48)
+          .fontColor($r('app.color.text_primary'))
+          .backgroundColor(this.themeSelected)
+          .onClick(() => {
+            this.openSecondary(NavSection.PAIRING)
+          })
+      }
       if (this.breakpoint === 'sm') {
         this.buildMainContent()
+        this.buildTaskStrip()
+        this.buildActionBar()
         this.buildBottomNav()
       } else if (this.breakpoint === 'md') {
         Row() {
           this.buildSidebar()
-          this.buildMainContent()
+          Column() {
+            this.buildMainContent()
+            this.buildTaskStrip()
+            this.buildActionBar()
+          }
+          .layoutWeight(1)
         }
         .layoutWeight(1)
       } else {
         Row() {
           this.buildSidebar()
-          this.buildMainContent()
-          this.buildContextPane()
+          Column() {
+            this.buildMainContent()
+            this.buildTaskStrip()
+            this.buildActionBar()
+          }
+          .layoutWeight(1)
         }
         .layoutWeight(1)
       }
@@ -2234,14 +2974,6 @@ export struct AppShell {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.app_background'))
-    .linearGradient({
-      angle: 155,
-      colors: [
-        [this.themeTint, 0],
-        [Color.Transparent, 0.55],
-        [this.themeTint, 1]
-      ]
-    })
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .bindContentCover(this.showColorPicker, this.buildColorPickerModal(), {
       modalTransition: ModalTransition.ALPHA,

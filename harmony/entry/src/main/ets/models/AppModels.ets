@@ -3,7 +3,8 @@ export enum NavSection {
   RECEIVE = 'receive',
   DEVICES = 'devices',
   HISTORY = 'history',
-  SETTINGS = 'settings'
+  SETTINGS = 'settings',
+  PAIRING = 'pairing'
 }
 
 export enum TransferStage {
@@ -28,6 +29,7 @@ export class TransferItem {
   name: string = ''
   kind: string = 'file'
   sizeLabel: string = ''
+  sizeBytes: number = 0
 }
 
 export class TransferProgress {
@@ -123,6 +125,13 @@ export class HistoryEntry {
   detail: string = ''
   timestamp: string = ''
   status: string = ''
+  peerId: string = ''
+  peerName: string = ''
+}
+
+export class TransferPeer {
+  id: string = ''
+  name: string = ''
 }
 
 export class AppSettings {

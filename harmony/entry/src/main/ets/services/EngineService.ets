@@ -12,6 +12,7 @@ import {
   PairedDevice,
   TransferItem,
   TransferMetadata,
+  TransferPeer,
   TransferProgress,
   TransferStage
 } from '../models/AppModels'
@@ -300,6 +301,7 @@ interface NativeNearbyUnavailableEvent {
 
 class TransferRuntime {
   progress: TransferProgress = new TransferProgress()
+  peer: TransferPeer = new TransferPeer()
   fileNames: Array<string> = []
   terminal: boolean = false
 }
@@ -494,9 +496,11 @@ export class EngineService {
     return platformService.loadSettings()
   }
 
-  async send(items: Array<TransferItem>, onProgress: TransferProgressCallback): Promise<void> {
+  async send(items: Array<TransferItem>, onProgress: TransferProgressCallback,
+    peer: TransferPeer = new TransferPeer()): Promise<void> {
     let sessionId: string = this.createSessionId('share')
     let runtime: TransferRuntime = new TransferRuntime()
+    runtime.peer = peer
     runtime.progress = this.makeProgress(
       sessionId,
       items.length > 0 ? TransferStage.SHARING : TransferStage.IDLE,
@@ -558,9 +562,11 @@ export class EngineService {
     }
   }
 
-  async receive(ticket: string, targetUri: string, onProgress: TransferProgressCallback): Promise<void> {
+  async receive(ticket: string, targetUri: string, onProgress: TransferProgressCallback,
+    peer: TransferPeer = new TransferPeer()): Promise<void> {
     let sessionId: string = this.createSessionId('receive')
     let runtime: TransferRuntime = new TransferRuntime()
+    runtime.peer = peer
     runtime.progress = this.makeProgress(
       sessionId,
       ticket.length > 0 && targetUri.length > 0 ? TransferStage.RECEIVING : TransferStage.IDLE,
@@ -1168,7 +1174,8 @@ export class EngineService {
             '发送',
             metadata.fileName,
             metadata.itemCount + ' 项 · ' + this.formatBytes(metadata.size),
-            'completed'
+            'completed',
+            runtime.peer
           )
         } catch (error) {
           historyError = '发送完成，但历史记录保存失败：' + this.caughtMessage(error as Error)
@@ -1301,7 +1308,8 @@ export class EngineService {
             '接收',
             title,
             exportedCount + ' 个文件已导出到用户选择的位置',
-            'completed'
+            'completed',
+            runtime.peer
           )
         } catch (error) {
           historyError = '接收与导出已完成，但历史记录保存失败：' + this.caughtMessage(error as Error)
@@ -1514,7 +1522,8 @@ export class EngineService {
     direction: string,
     title: string,
     detail: string,
-    status: string
+    status: string,
+    peer: TransferPeer
   ): Promise<void> {
     let entry: HistoryEntry = new HistoryEntry()
     entry.id = id
@@ -1523,6 +1532,8 @@ export class EngineService {
     entry.detail = detail
     entry.timestamp = new Date().toISOString()
     entry.status = status
+    entry.peerId = peer.id
+    entry.peerName = peer.name
     let current: Array<HistoryEntry> = await platformService.loadHistory()
     await platformService.saveHistory([entry, ...current].slice(0, HISTORY_LIMIT))
   }

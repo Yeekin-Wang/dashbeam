@@ -4,6 +4,7 @@ import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit'
 import { fileIo, picker, fileShare } from '@kit.CoreFileKit'
 import { display } from '@kit.ArkUI'
 import { hilog } from '@kit.PerformanceAnalysisKit'
+import { photoAccessHelper } from '@kit.MediaLibraryKit'
 import {
   AppSettings,
   DisplayState,
@@ -39,6 +40,8 @@ interface StoredHistoryEntry {
   detail: string
   timestamp: string
   status: string
+  peerId?: string
+  peerName?: string
 }
 
 type DisplayListener = (state: DisplayState) => void
@@ -159,6 +162,8 @@ export class PlatformService {
         item.detail = entry.detail
         item.timestamp = entry.timestamp
         item.status = entry.status
+        item.peerId = entry.peerId ?? ''
+        item.peerName = entry.peerName ?? ''
         items.push(item)
       })
     } catch (_error) {
@@ -192,6 +197,18 @@ export class PlatformService {
     item.kind = kind
     item.name = this.extractNameFromUri(uri)
     item.sizeLabel = ''
+    let file: fileIo.File | null = null
+    try {
+      file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY)
+      item.sizeBytes = fileIo.statSync(file.fd).size
+      item.sizeLabel = item.sizeBytes + ' B'
+    } catch (_error) {
+      item.sizeLabel = ''
+    } finally {
+      if (file !== null) {
+        fileIo.closeSync(file)
+      }
+    }
     return item
   }
 
@@ -479,6 +496,15 @@ export class PlatformService {
     let resultUris: Array<string> = await documentPicker.select(documentSelectOptions)
     await this.persistUris(resultUris, fileShare.OperationMode.READ_MODE)
     return resultUris.map((uri: string) => this.makeTransferItem(uri, '文件'))
+  }
+
+  async selectPhotos(): Promise<Array<TransferItem>> {
+    let options: photoAccessHelper.PhotoSelectOptions = new photoAccessHelper.PhotoSelectOptions()
+    options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE
+    options.maxSelectNumber = 100
+    let photoPicker: photoAccessHelper.PhotoViewPicker = new photoAccessHelper.PhotoViewPicker()
+    let result: photoAccessHelper.PhotoSelectResult = await photoPicker.select(options)
+    return result.photoUris.map((uri: string) => this.makeTransferItem(uri, '照片'))
   }
 
   async selectFolder(): Promise<Array<TransferItem>> {

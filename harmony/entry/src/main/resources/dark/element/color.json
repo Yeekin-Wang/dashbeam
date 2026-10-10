@@ -2,47 +2,47 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#1E2523"
+      "value": "#16181B"
     },
     {
       "name": "app_background",
-      "value": "#1E2523"
+      "value": "#16181B"
     },
     {
       "name": "panel_surface",
-      "value": "#29332F"
+      "value": "#26292E"
     },
     {
       "name": "glass_surface",
-      "value": "#9932403B"
+      "value": "#16181B"
     },
     {
       "name": "glass_edge",
-      "value": "#6668766E"
+      "value": "#33373D"
     },
     {
       "name": "glass_shadow",
-      "value": "#40000000"
+      "value": "#00000000"
     },
     {
       "name": "context_surface",
-      "value": "#293530"
+      "value": "#26292E"
     },
     {
       "name": "selected_surface",
-      "value": "#365944"
+      "value": "#263C54"
     },
     {
       "name": "text_primary",
-      "value": "#F2F6F4"
+      "value": "#F2F3F5"
     },
     {
       "name": "text_secondary",
-      "value": "#C5D0C9"
+      "value": "#ADB2B9"
     },
     {
       "name": "divider",
-      "value": "#526159"
+      "value": "#33373D"
     },
     {
       "name": "accent",

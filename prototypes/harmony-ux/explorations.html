@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>DashBeam / 三种新的交互方向</title>
+  <link rel="icon" href="../../frontend/public/favicon-96x96.png">
+  <style>
+    :root { font-family: 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei', sans-serif; color: #202224; background: #edeef0; font-synthesis: none; letter-spacing: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    button, a, input, select { touch-action: manipulation; }
+    button { color: inherit; }
+    button:disabled { cursor: default; opacity: .4; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #2375d4; outline-offset: 3px; }
+    button:active:not(:disabled) { opacity: .65; }
+    button, a { transition: background-color 140ms, opacity 140ms; }
+    h1, h2, h3, p { margin: 0; }
+    a { color: inherit; text-underline-offset: 4px; }
+    .icon { width: 22px; height: 22px; object-fit: contain; flex: none; }
+    .board { max-width: 1320px; margin: auto; padding: 25px 36px 32px; }
+    .masthead { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #cfd2d6; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img { width: 34px; height: 34px; border-radius: 8px; }
+    .brand h1 { font-family: 'Bahnschrift', 'HarmonyOS Sans SC', sans-serif; font-size: 21px; font-weight: 600; }
+    .brand small { display: block; margin-top: 3px; font-size: 11px; color: #64686e; }
+    .review-meta { display: flex; align-items: center; gap: 22px; font-size: 12px; color: #61666c; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin: 20px 0 26px; gap: 12px; }
+    .toolbar p { font-size: 12px; color: #60656b; }
+    .view-switch { display: flex; padding: 3px; background: #dfe1e4; border-radius: 6px; }
+    .view-switch button { min-width: 44px; height: 34px; background: none; border: none; border-radius: 4px; font-size: 12px; padding: 0 13px; }
+    .view-switch button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 3px #00000012; }
+    .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 372px)); gap: 36px; justify-content: center; align-items: start; }
+    .concept { min-width: 0; }
+    .concept-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .concept-heading .letter { font: 500 13px 'Bahnschrift', sans-serif; width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #a9aeb4; border-radius: 50%; }
+    .concept-heading h2 { font-size: 16px; font-weight: 600; }
+    .concept-heading small { margin-left: auto; font-size: 11px; color: #62676e; }
+    .phone { --accent: #1764ce; --tint: #edf4ff; --ink: #202124; --muted: #70747b; --line: #eceef1; position: relative; height: 742px; border: 1px solid #bbbfc5; border-radius: 30px; overflow: hidden; background: #fff; color: var(--ink); box-shadow: 0 6px 12px #23272b08, 0 25px 45px -30px #252b3440; }
+    .phone.b { --accent: #b93d2e; --tint: #fcf0ec; }
+    .phone.c { --accent: #146959; --tint: #edf5f2; background: #f8f9f9; }
+    .statusbar { height: 40px; padding: 13px 22px 4px; display: flex; align-items: center; justify-content: space-between; font: 600 12px 'Bahnschrift', sans-serif; }
+    .statusbar > span { display: flex; align-items: center; gap: 6px; }
+    .statusbar .icon { width: 14px; height: 14px; }
+    .camera { width: 8px; height: 8px; background: #242529; border-radius: 50%; position: absolute; left: calc(50% - 4px); top: 17px; }
+    .app-top { height: 61px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+    .wordmark { display: flex; align-items: center; gap: 7px; font: 600 19px 'Bahnschrift', 'Microsoft YaHei', sans-serif; }
+    .wordmark img { width: 22px; height: 22px; border-radius: 5px; }
+    .top-actions { display: flex; gap: 0; }
+    .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: none; background: transparent; border-radius: 6px; flex: none; }
+    .icon-button:hover { background: #88888812; }
+    .phone-body { height: calc(100% - 101px); display: flex; flex-direction: column; }
+    .content { flex: 1; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: #dde0e3 transparent; padding: 12px 22px 20px; }
+    .page-title { font-size: 27px; font-weight: 600; line-height: 1.4; margin: 0 0 5px; }
+    .subtitle { font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; min-height: 40px; margin: 19px 0 6px; font-size: 12px; font-weight: 600; }
+    .section-title small { font-size: 10px; color: var(--muted); font-weight: 400; }
+    .online { display: inline-flex; align-items: center; gap: 5px; }
+    .online::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #398666; }
+    .device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .device-tile { min-height: 133px; display: flex; flex-direction: column; align-items: flex-start; padding: 15px 13px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f6f7f9; text-align: left; }
+    .device-tile .icon { width: 38px; height: 38px; margin-bottom: 10px; stroke-width: 1.3; }
+    .device-tile strong { font-size: 12px; font-weight: 500; max-width: 100%; overflow-wrap: anywhere; }
+    .device-tile small { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .device-tile:hover { background: var(--tint); border-color: #c2d5ef; }
+    .list-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 68px; padding: 12px 0; border: none; border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
+    button.list-row:hover { background: #88888808; }
+    .list-row > .icon { width: 27px; height: 27px; }
+    .row-text { flex: 1; min-width: 0; }
+    .row-text strong { display: block; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row-text small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+    .row-tail { color: var(--muted); font-size: 10px; flex: none; }
+    .row-tail .icon { width: 16px; height: 16px; }
+    .self-device { display: flex; align-items: center; gap: 10px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .self-device .icon { width: 20px; height: 20px; }
+    .self-device > div { min-width: 0; }
+    .self-device p { font-size: 11px; overflow-wrap: anywhere; }
+    .self-device small { display: block; margin-top: 4px; font-size: 10px; color: var(--muted); }
+    .action-bar { padding: 12px 22px; display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); background: #fff; }
+    .primary, .secondary { min-height: 45px; padding: 11px 16px; border: none; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 500; }
+    .primary { color: white; background: var(--accent); }
+    .primary .icon { filter: brightness(0) invert(1); width: 18px; height: 18px; }
+    .secondary { background: #f0f1f3; }
+    .grow { flex: 1; }
+    .full { width: 100%; }
+    .bottom-nav { height: 73px; flex: none; display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 18px 18px; background: white; }
+    .bottom-nav button { border: none; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10px; color: #71757c; }
+    .bottom-nav button[aria-current="page"] { color: var(--accent); font-weight: 600; }
+    .bottom-nav button[aria-current="page"]::before { content: ''; width: 19px; height: 2px; background: var(--accent); position: absolute; margin-top: 48px; }
+    .bottom-nav .icon { width: 20px; height: 20px; }
+    .home-indicator { position: absolute; bottom: 7px; left: calc(50% - 44px); width: 88px; height: 4px; border-radius: 4px; background: #27292d; pointer-events: none; }
+    .caption { font-size: 12px; color: #60666d; line-height: 1.7; margin: 15px 0 0; max-width: 340px; }
+    .caption strong { font-weight: 500; color: #22272d; }
+    .device-tile strong { font-size: 13px; }
+    .device-tile small, .row-text small { font-size: 11px; }
+    .row-text strong { font-size: 13px; }
+    .active-transfer { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 9px 22px; border: none; border-top: 1px solid var(--line); background: var(--tint); text-align: left; }
+    .active-transfer > .icon { width: 20px; height: 20px; }
+    .active-transfer .row-text strong { font-size: 11px; }
+    .active-transfer .row-text small { font-size: 10px; }
+    .active-transfer .task-percent { font: 500 14px 'Bahnschrift', sans-serif; }
+    .file-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin: 16px 0 15px; }
+    .file-tabs button { min-height: 44px; padding: 5px 0 12px; font-size: 12px; border: none; background: none; color: var(--muted); border-bottom: 2px solid transparent; }
+    .file-tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+    .date-label { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 10px; font-size: 11px; }
+    .date-label small { font-size: 10px; color: var(--muted); }
+    .photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+    .photo-button { position: relative; aspect-ratio: 1; padding: 0; border: none; background: #e2e5e6; border-radius: 3px; overflow: hidden; }
+    .photo-button > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .photo-button .selection-dot { position: absolute; right: 7px; top: 7px; width: 19px; height: 19px; border-radius: 50%; border: 1.5px solid #fff; background: #00000025; display: grid; place-items: center; font-size: 10px; color: white; }
+    .photo-button[aria-pressed="true"]::after { content: ''; position: absolute; inset: 0; border: 3px solid var(--accent); border-radius: 3px; }
+    .photo-button[aria-pressed="true"] .selection-dot { background: var(--accent); border-color: var(--accent); }
+    .photo-button[aria-pressed="true"] > img { opacity: .83; }
+    .selection-summary { padding: 12px 22px 14px; background: #fff; border-top: 1px solid var(--line); }
+    .selection-summary .summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 11px; }
+    .selection-summary .summary small { color: var(--muted); }
+    .document-icon { width: 36px; height: 44px; background: #f4efed; display: grid; place-items: center; flex: none; border-radius: 3px; color: #a94a38; font: 600 9px 'Bahnschrift', sans-serif; }
+    .document-icon.zip { color: #4b68a1; background: #eef1f8; }
+    .check { width: 19px; height: 19px; border: 1px solid #b0b3ba; border-radius: 50%; display: grid; place-items: center; font-size: 11px; flex: none; }
+    [aria-pressed="true"] > .check { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .c .app-top { border-bottom: 1px solid #e4e7e7; height: 61px; background: #fff; }
+    .c .content:has(> .page-intro) { padding: 0; }
+    .c .page-intro { padding: 23px 22px 19px; background: #fff; }
+    .c .page-title { font-size: 25px; }
+    .c .bottom-nav { background: #fff; border-top: 1px solid #e4e7e7; }
+    .thread { display: flex; align-items: flex-start; gap: 12px; padding: 21px 22px; width: 100%; border: none; border-bottom: 1px solid #e4e7e7; background: #fff; text-align: left; }
+    .thread:hover { background: #f3f6f5; }
+    .device-avatar { width: 42px; height: 42px; background: #edf1f3; border-radius: 8px; display: grid; place-items: center; flex: none; }
+    .device-avatar.green { background: #e9f0e9; }
+    .device-avatar.orange { background: #f6eee8; }
+    .thread-copy { flex: 1; min-width: 0; }
+    .thread-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 9px; }
+    .thread-title strong { font-size: 12px; font-weight: 600; }
+    .thread-title time { color: var(--muted); font-size: 9px; flex: none; }
+    .thread-copy p { font-size: 11px; color: #73777c; line-height: 1.6; overflow-wrap: anywhere; }
+    .thread-copy .thread-status { margin-top: 7px; display: flex; align-items: center; gap: 4px; color: #397362; font-size: 10px; }
+    .thread-status .icon { width: 12px; height: 12px; }
+    .transfer-preview { display: flex; gap: 5px; margin: 12px 0 9px; }
+    .transfer-preview img { width: 41px; height: 41px; border-radius: 3px; object-fit: cover; }
+    .progress-inline { height: 3px; background: #e2e8e5; margin-top: 12px; }
+    .progress-inline span { display: block; height: 100%; background: var(--accent); width: 68%; }
+    .c .new-transfer { padding: 25px 22px; }
+    .c .primary { background: #263e38; }
+    .history-heading { font-size: 11px; color: var(--muted); margin: 22px 0 3px; }
+    .history-status { font-size: 10px; color: #427b62; }
+    .empty-state { padding: 50px 8px; text-align: center; color: var(--muted); font-size: 12px; }
+    .empty-state .icon { width: 35px; height: 35px; opacity: .5; margin-bottom: 15px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; min-height: 62px; gap: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .settings-row input[type="checkbox"] { appearance: none; width: 38px; height: 23px; border-radius: 15px; background: #b9bdc2; position: relative; flex: none; cursor: pointer; }
+    .settings-row input[type="checkbox"]::after { content: ''; position: absolute; width: 17px; height: 17px; top: 3px; left: 3px; background: #fff; border-radius: 50%; transition: transform 150ms; }
+    .settings-row input:checked { background: var(--accent); }
+    .settings-row input:checked::after { transform: translateX(15px); }
+    .settings-row select { max-width: 140px; padding: 7px; border: 1px solid #d2d5d8; border-radius: 4px; background: white; font-size: 11px; }
+    .settings-row input[type="text"] { width: 135px; border: none; background: #f4f5f6; padding: 9px; text-align: right; border-radius: 4px; font-size: 11px; }
+    dialog { --accent: #1764ce; --tint: #edf4ff; --muted: #70747b; --line: #eceef1; position: fixed; margin: 0; padding: 22px; width: 340px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 40px); border: 1px solid #e1e4e8; border-radius: 8px; background: #fff; color: #202124; box-shadow: 0 16px 60px #00000022; overflow-y: auto; }
+    dialog::backdrop { background: #20262c55; }
+    dialog .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -5px -7px 12px 0; }
+    dialog h2 { font-size: 19px; font-weight: 600; }
+    dialog p { font-size: 12px; line-height: 1.65; color: #70747b; }
+    dialog .dialog-actions { display: flex; gap: 8px; margin-top: 22px; }
+    dialog .dialog-actions > button { flex: 1; }
+    dialog .dialog-file { display: flex; gap: 12px; align-items: center; padding: 13px 0; min-height: 66px; border-bottom: 1px solid #eceef1; cursor: pointer; }
+    dialog .dialog-file input { width: 18px; height: 18px; accent-color: var(--accent); }
+    dialog .dialog-file > img { width: 43px; height: 43px; object-fit: cover; border-radius: 3px; }
+    dialog .dialog-file .row-text strong { white-space: normal; overflow-wrap: anywhere; }
+    dialog .field { display: block; margin: 20px 0 0; font-size: 12px; }
+    dialog .field input { display: block; width: 100%; margin-top: 9px; border: 1px solid #b7bcc3; border-radius: 5px; padding: 13px; font-size: 12px; }
+    dialog .error { color: #b3261e; font-size: 11px; margin-top: 8px; }
+    dialog .receive-device { padding: 22px 0; display: flex; align-items: center; gap: 13px; border-bottom: 1px solid var(--line); }
+    dialog .receive-device > .icon { width: 37px; height: 37px; }
+    dialog .transfer-icon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 8px; background: var(--tint); margin: 22px 0; }
+    dialog .transfer-icon .icon { width: 30px; height: 30px; }
+    dialog .progress-number { font: 500 43px 'Bahnschrift', sans-serif; margin: 20px 0 12px; }
+    dialog progress { display: block; width: 100%; height: 6px; border: none; border-radius: 4px; accent-color: var(--accent); overflow: hidden; }
+    dialog progress::-webkit-progress-bar { background: #e9ecef; }
+    dialog progress::-webkit-progress-value { background: var(--accent); }
+    dialog .progress-details { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin: 10px 0 0; }
+    .conversation-date { text-align: center; font-size: 10px; color: #7c8187; margin: 19px 0; }
+    .message { padding: 16px 0; border-top: 1px solid var(--line); }
+    .message small { color: #73787e; font-size: 10px; }
+    .message p { margin-top: 6px; font-size: 12px; color: #252a2e; }
+    .message .transfer-preview img { width: 55px; height: 55px; }
+    .reference-notes { margin-top: 29px; padding-top: 18px; border-top: 1px solid #cfd2d6; display: flex; justify-content: space-between; gap: 24px; font-size: 11px; color: #686e75; line-height: 1.8; }
+    .reference-notes details { max-width: 680px; }
+    .reference-notes summary { cursor: pointer; color: #40464e; }
+    .reference-notes p { margin-top: 10px; }
+    [hidden] { display: none !important; }
+    body[data-view]:not([data-view="all"]) .gallery { grid-template-columns: minmax(0, 390px); }
+    body[data-view="a"] .concept:not([data-concept="a"]), body[data-view="b"] .concept:not([data-concept="b"]), body[data-view="c"] .concept:not([data-concept="c"]) { display: none; }
+    @media (min-width: 1100px) { .concept { animation: reveal 350ms both; } .concept:nth-child(2) { animation-delay: 60ms; } .concept:nth-child(3) { animation-delay: 120ms; } }
+    @keyframes reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 1120px) and (min-width: 981px) { .board { padding: 22px 20px; } .gallery { gap: 16px; } .content { padding-left: 16px; padding-right: 16px; } .concept-heading { flex-wrap: wrap; } .concept-heading small { width: 100%; margin-left: 37px; } .device-grid { gap: 7px; } .device-tile { padding: 13px 10px; } .device-tile strong { font-size: 11px; } .phone { height: 720px; border-radius: 24px; } .thread { padding: 18px 16px; gap: 8px; } .device-avatar { width: 34px; height: 38px; } }
+    @media (max-width: 980px) { .board { padding: 15px 14px 24px; } .masthead { padding-bottom: 14px; } .brand h1 { font-size: 19px; } .review-meta > span { display: none; } .toolbar { margin: 15px 0 18px; } .toolbar p { font-size: 11px; } .view-switch button { padding: 0 9px; } .gallery { grid-template-columns: minmax(0, 390px); gap: 30px; } .phone { height: 742px; } .reference-notes { flex-direction: column; gap: 14px; } .concept-heading small { font-size: 10px; } }
+    @media (max-width: 370px) { .board { padding: 12px 10px; } .content { padding-left: 17px; padding-right: 17px; } .brand small { font-size: 10px; } .review-meta { font-size: 10px; } .toolbar { align-items: flex-start; flex-direction: column; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body data-view="all">
+  <main class="board">
+    <header class="masthead">
+      <div class="brand"><img src="../../frontend/public/favicon-96x96.png" alt=""><div><h1>DashBeam</h1><small>HarmonyOS / 交互设计探索 02</small></div></div>
+      <div class="review-meta"><span>2026.10</span><a href="index.html">上一轮方案</a></div>
+    </header>
+    <div class="toolbar">
+      <p>三种操作起点，同一个文件传输工具。</p>
+      <div class="view-switch" role="group" aria-label="方案视图">
+        <button data-view="all" aria-pressed="true">全部</button><button data-view="a" aria-pressed="false">A</button><button data-view="b" aria-pressed="false">B</button><button data-view="c" aria-pressed="false">C</button>
+      </div>
+    </div>
+    <section class="gallery" aria-label="三套交互原型">
+      <article class="concept" data-concept="a"><header class="concept-heading"><span class="letter">A</span><h2>附近</h2><small>先找设备，再发文件</small></header><div class="phone a" id="phone-a" aria-label="方案 A 附近"></div><p class="caption"><strong>一个安静的系统工具。</strong><br>设备成为首页主角，发送与接收始终在拇指附近。</p></article>
+      <article class="concept" data-concept="b"><header class="concept-heading"><span class="letter">B</span><h2>文件</h2><small>先选内容，再选去向</small></header><div class="phone b" id="phone-b" aria-label="方案 B 文件"></div><p class="caption"><strong>从你要发送的东西开始。</strong><br>真实缩略图替代空白上传框，选完内容再决定发给谁。</p></article>
+      <article class="concept" data-concept="c"><header class="concept-heading"><span class="letter">C</span><h2>往来</h2><small>按设备整理每一次传输</small></header><div class="phone c" id="phone-c" aria-label="方案 C 往来"></div><p class="caption"><strong>手机与电脑之间的文件收件箱。</strong><br>重复传输有固定入口，文件、进度和记录留在同一条时间线。</p></article>
+    </section>
+    <footer class="reference-notes">
+      <details><summary>设计参考与取舍</summary><p><a href="https://support.apple.com/en-us/119857" target="_blank" rel="noreferrer">AirDrop 官方操作界面</a>：参考内容选择与收件人选择的先后关系，不沿用玻璃材质。<br><a href="https://github.com/localsend/localsend#screenshots" target="_blank" rel="noreferrer">LocalSend 官方截图</a>：参考独立的发送、接收和设备身份。鸿蒙本地文档参考 Tabs 与 Navigation 的层级职责。</p><p>A 优先复用现有设备与选择器能力；B 的内嵌照片库需额外评估媒体访问能力与授权；C 的按设备往来记录需补充记录归属。照片来自 <a href="https://unsplash.com" target="_blank" rel="noreferrer">Unsplash</a>，图标来自 <a href="https://lucide.dev" target="_blank" rel="noreferrer">Lucide</a>。</p></details>
+      <span>交互原型 · 示例文件与设备 · 不连接真实传输引擎</span>
+    </footer>
+  </main>
+  <dialog id="interaction" aria-labelledby="dialog-title"></dialog>
+  <script>
+    (() => {
+      const iconRoot = 'media/';
+      const photoRoot = 'media/';
+      const icon = (name) => `<img class="icon" src="${iconRoot}${name}.svg" alt="" aria-hidden="true">`;
+      const files = [
+        { id: 'sea', name: '海边.jpg', size: 4.8, image: 'photo-1473116763249-2faaef81ccda' },
+        { id: 'mountain', name: '山间.jpg', size: 6.4, image: 'photo-1464822759023-fed622ff2c3b' },
+        { id: 'coast', name: '海岸.jpg', size: 3.2, image: 'photo-1518837695005-2083093ee35b' },
+        { id: 'forest', name: '林间.jpg', size: 5.1, image: 'photo-1448375240586-882707db888b' },
+        { id: 'lake', name: '湖畔.jpg', size: 4.3, image: 'photo-1470770841072-f978cf4d019e' },
+        { id: 'road', name: '公路.jpg', size: 5.7, image: 'photo-1500534623283-312aade485b7' },
+        { id: 'pdf', name: '周末出行计划.pdf', size: 2.4, type: 'PDF' },
+        { id: 'zip', name: '项目素材.zip', size: 86.2, type: 'ZIP' },
+      ];
+      const devices = [
+        { id: 'mac', name: '我的 MacBook', icon: 'laptop', platform: 'macOS', online: true },
+        { id: 'matepad', name: '我的 MatePad', icon: 'tablet', platform: 'HarmonyOS', online: true },
+        { id: 'lin', name: '小林的手机', icon: 'smartphone', platform: 'HarmonyOS', online: true },
+      ];
+      const states = Object.fromEntries(['a', 'b', 'c'].map((variant) => [variant, {
+        page: 'home', category: 'photos', selected: new Set(variant === 'b' ? ['sea', 'mountain'] : []),
+        target: null, history: [], transfer: null, discoverable: true, deviceName: 'Mate 80 Pro', destination: '下载',
+      }]));
+      const dialog = document.querySelector('#interaction');
+      let activeVariant = 'a';
+      let dialogMode = '';
+      let lastFocused = null;
+      const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+      const photo = (file) => `${photoRoot}${file.image}.jpg`;
+      const chosenFiles = (state) => files.filter((file) => state.selected.has(file.id));
+      const totalSize = (state) => chosenFiles(state).reduce((total, file) => total + file.size, 0).toFixed(1);
+      const iconButton = (name, label, action) => `<button class="icon-button" data-action="${action}" title="${label}" aria-label="${label}">${icon(name)}</button>`;
+
+      function navigation(state) {
+        return `<nav class="bottom-nav" aria-label="主导航">${[['home', 'arrow-left-right', '传输'], ['history', 'clock-3', '记录'], ['settings', 'sliders-horizontal', '设置']].map(([page, symbol, label]) => `<button data-action="nav" data-page="${page}" ${state.page === page ? 'aria-current="page"' : ''}>${icon(symbol)}<span>${label}</span></button>`).join('')}</nav>`;
+      }
+
+      function deviceRow(device, action = 'device') {
+        return `<button class="list-row" data-action="${action}" data-device="${device.id}">${icon(device.icon)}<span class="row-text"><strong>${device.name}</strong><small>${device.platform} · 在线</small></span><span class="row-tail">${icon('chevron-right')}</span></button>`;
+      }
+
+      function nearbyPage(state) {
+        return `<div class="content"><h2 class="page-title">附近</h2><p class="subtitle online">3 台设备在线</p><h3 class="section-title">我的设备 <small>同一网络</small></h3><div class="device-grid">${devices.slice(0, 2).map((device) => `<button class="device-tile" data-action="device" data-device="${device.id}">${icon(device.icon)}<strong>${device.name}</strong><small class="online">${device.platform}</small></button>`).join('')}</div><h3 class="section-title">其他设备</h3>${deviceRow(devices[2])}<div class="self-device">${icon('smartphone')}<div><p>${escapeHtml(state.deviceName)}</p><small>${state.discoverable ? '附近设备可发现' : '已关闭附近发现'} · 本机</small></div></div></div><div class="action-bar"><button class="secondary" data-action="receive">${icon('arrow-down-to-line')}接收</button><button class="primary grow" data-action="pick">${icon('plus')}选择文件</button></div>`;
+      }
+
+      function photoButton(file, state) {
+        const selected = state.selected.has(file.id);
+        const order = [...state.selected].indexOf(file.id) + 1;
+        return `<button class="photo-button" data-action="select" data-file="${file.id}" aria-label="${file.name}" aria-pressed="${selected}"><img src="${photo(file)}" alt="${file.name.slice(0, -4)}"><span class="selection-dot">${selected ? order : ''}</span></button>`;
+      }
+
+      function documentRow(file, state) {
+        const selected = state.selected.has(file.id);
+        return `<button class="list-row" data-action="select" data-file="${file.id}" aria-pressed="${selected}"><span class="document-icon ${file.type.toLowerCase()}">${file.type}</span><span class="row-text"><strong>${file.name}</strong><small>${file.size} MB</small></span><span class="check">${selected ? '✓' : ''}</span></button>`;
+      }
+
+      function filesPage(state) {
+        const tabs = [['photos', '照片'], ['documents', '文档'], ['all', '全部']];
+        let content = '';
+        if (state.category !== 'documents') {
+          content += `<div class="date-label"><span>10 月 9 日 · 周五</span><small>6 张照片</small></div><div class="photo-grid">${files.filter((file) => file.image).map((file) => photoButton(file, state)).join('')}</div>`;
+        }
+        if (state.category !== 'photos') {
+          content += `<h3 class="section-title">最近文件</h3>${files.filter((file) => file.type).map((file) => documentRow(file, state)).join('')}`;
+        } else {
+          content += `<h3 class="section-title">最近文件 <small>今天</small></h3>${documentRow(files[6], state)}`;
+        }
+        return `<div class="content"><h2 class="page-title">文件</h2><p class="subtitle">本机内容</p><div class="file-tabs" role="group" aria-label="文件类型">${tabs.map(([category, label]) => `<button data-action="category" data-category="${category}" aria-pressed="${state.category === category}">${label}</button>`).join('')}</div>${content}</div><div class="selection-summary"><div class="summary"><span>已选 ${state.selected.size} 项</span><small>${totalSize(state)} MB</small></div><button class="primary full" data-action="recipients" ${state.selected.size === 0 ? 'disabled' : ''}>发送${state.selected.size ? ` ${state.selected.size} 项` : ''}${icon('arrow-right')}</button></div>`;
+      }
+
+      function threadsPage(state) {
+        const previews = ['已发送 · 3 张照片', '收到 项目素材.zip', '收到 海边.jpg 等 6 张照片'];
+        const times = ['10:24', '09:41', '昨天'];
+        const colors = ['', 'green', 'orange'];
+        const threads = devices.map((device, index) => {
+          const recent = state.history.find((entry) => entry.target === device.name);
+          const preview = recent ? `${recent.count} 个文件 · ${recent.status}` : previews[index];
+          const thumbnails = index === 0 && !recent ? `<span class="transfer-preview">${files.slice(0, 3).map((file) => `<img src="${photo(file)}" alt="${file.name}">`).join('')}</span>` : '';
+          const status = recent ? `${recent.size} MB · ${recent.status}` : '设备在线';
+          return `<button class="thread" data-action="thread" data-device="${device.id}"><span class="device-avatar ${colors[index]}">${icon(device.icon)}</span><span class="thread-copy"><span class="thread-title"><strong>${device.name}</strong><time>${recent ? '刚刚' : times[index]}</time></span><p>${preview}</p>${thumbnails}<span class="thread-status">${icon('check-check')}${status}</span></span></button>`;
+        }).join('');
+        return `<div class="content"><div class="page-intro"><h2 class="page-title">往来</h2><p class="subtitle">文件在设备之间</p></div>${threads}<div class="new-transfer"><button class="primary full" data-action="recipients-new">${icon('plus')}新的传输</button></div></div>`;
+      }
+
+      function historyPage(state) {
+        const rows = state.history.map((entry) => `<div class="list-row">${icon(entry.direction === 'receive' ? 'arrow-down-left' : 'arrow-up-right')}<span class="row-text"><strong>${escapeHtml(entry.target)}</strong><small>${entry.count} 个文件 · ${entry.size} MB · 刚刚</small></span><span class="history-status">${entry.status}</span></div>`).join('');
+        return `<div class="content"><h2 class="page-title">记录</h2><p class="subtitle">${state.history.length + 2} 次传输</p><h3 class="history-heading">今天</h3>${rows}<div class="list-row">${icon('arrow-up-right')}<span class="row-text"><strong>周末出行计划.pdf</strong><small>发给 我的 MacBook · 10:24</small></span><span class="history-status">已完成</span></div><div class="list-row">${icon('arrow-down-left')}<span class="row-text"><strong>项目素材.zip</strong><small>来自 我的 MatePad · 09:41</small></span><span class="history-status">已保存</span></div></div>`;
+      }
+
+      function settingsPage(state) {
+        return `<div class="content"><h2 class="page-title">设置</h2><h3 class="section-title">这台设备</h3><label class="settings-row">设备名称<input type="text" data-setting="deviceName" maxlength="30" value="${escapeHtml(state.deviceName)}"></label><label class="settings-row">附近可发现<input type="checkbox" data-setting="discoverable" ${state.discoverable ? 'checked' : ''}></label><label class="settings-row">保存位置<select data-setting="destination">${['下载', '文档'].map((folder) => `<option ${state.destination === folder ? 'selected' : ''}>${folder}</option>`).join('')}</select></label><div class="settings-row"><span>版本</span><span class="row-tail">DashBeam 0.7.0</span></div></div>`;
+      }
+
+      function render(variant) {
+        const state = states[variant];
+        const phone = document.querySelector(`#phone-${variant}`);
+        const focused = phone.contains(document.activeElement) ? document.activeElement : null;
+        const focusAction = focused?.dataset.action;
+        const focusKey = focused?.dataset.file || focused?.dataset.category || focused?.dataset.page;
+        const scrollTop = phone.querySelector('.content')?.scrollTop || 0;
+        const homePages = { a: nearbyPage, b: filesPage, c: threadsPage };
+        const pageRenderers = { home: homePages[variant], history: historyPage, settings: settingsPage };
+        const taskBar = state.transfer ? `<button class="active-transfer" data-action="resume">${icon('arrow-left-right')}<span class="row-text"><strong>${state.transfer.progress >= 100 ? '传输完成' : '正在传输'}</strong><small>${state.transfer.target} · ${state.transfer.count} 项</small></span><span class="task-percent">${state.transfer.progress}%</span></button>` : '';
+        phone.innerHTML = `<div class="statusbar"><span>9:41</span><i class="camera" aria-hidden="true"></i><span>${icon('signal')}${icon('wifi')}${icon('battery-full')}</span></div><header class="app-top"><div class="wordmark"><img src="../../frontend/public/favicon-96x96.png" alt="">DashBeam</div><div class="top-actions">${variant !== 'a' ? iconButton('arrow-down-to-line', '接收文件', 'receive') : ''}${iconButton('settings-2', '设置', 'settings')}</div></header><div class="phone-body">${pageRenderers[state.page](state)}${taskBar}${navigation(state)}</div><div class="home-indicator" aria-hidden="true"></div>`;
+        if (state.page === 'home') { phone.querySelector('.content').scrollTop = scrollTop; }
+        if (focusAction) {
+          const candidate = [...phone.querySelectorAll(`[data-action="${focusAction}"]`)].find((element) => !focusKey || [element.dataset.file, element.dataset.category, element.dataset.page].includes(focusKey));
+          candidate?.focus({ preventScroll: true });
+        }
+      }
+
+      function positionDialog() {
+        const bounds = document.querySelector(`#phone-${activeVariant}`).getBoundingClientRect();
+        const width = Math.min(bounds.width - 16, window.innerWidth - 24);
+        dialog.style.width = `${width}px`;
+        dialog.style.maxHeight = `${Math.min(bounds.height - 60, window.innerHeight - 36)}px`;
+        dialog.style.left = `${Math.max(12, Math.min(bounds.left + 8, window.innerWidth - width - 12))}px`;
+        const bottom = Math.min(bounds.bottom - 12, window.innerHeight - 18);
+        dialog.style.top = `${Math.max(18, bottom - dialog.offsetHeight)}px`;
+      }
+
+      function openDialog(title, body, mode) {
+        dialogMode = mode;
+        if (!dialog.open) { lastFocused = document.activeElement; }
+        const theme = getComputedStyle(document.querySelector(`#phone-${activeVariant}`));
+        dialog.style.setProperty('--accent', theme.getPropertyValue('--accent'));
+        dialog.style.setProperty('--tint', theme.getPropertyValue('--tint'));
+        dialog.innerHTML = `<div class="dialog-header"><h2 id="dialog-title">${title}</h2>${iconButton('x', '关闭', 'close')}</div>${body}`;
+        if (!dialog.open) { dialog.showModal(); }
+        positionDialog();
+        dialog.querySelector('input, button')?.focus({ preventScroll: true });
+      }
+
+      function closeDialog() {
+        dialog.close();
+        if (lastFocused?.isConnected) { lastFocused.focus({ preventScroll: true }); }
+      }
+
+      function openPicker() {
+        const state = states[activeVariant];
+        const target = devices.find((device) => device.id === state.target);
+        const rows = [files[0], files[1], files[6], files[7]].map((file) => `<label class="dialog-file"><input type="checkbox" data-pick="${file.id}" ${state.selected.has(file.id) ? 'checked' : ''}>${file.image ? `<img src="${photo(file)}" alt="">` : `<span class="document-icon">${file.type}</span>`}<span class="row-text"><strong>${file.name}</strong><small>${file.size} MB</small></span></label>`).join('');
+        openDialog('选择文件', `<p>${target ? `发给 ${target.name}` : '最近项目'}</p>${rows}<div class="dialog-actions"><button class="primary" data-action="picker-next" ${state.selected.size === 0 ? 'disabled' : ''}>${target ? '发送' : '下一步'} · ${state.selected.size} 项</button></div>`, 'picker');
+      }
+
+      function openRecipients() {
+        const state = states[activeVariant];
+        openDialog('发送到', `<p>${state.selected.size ? `已选 ${state.selected.size} 项 · ${totalSize(state)} MB` : '附近设备'}</p>${devices.map((device) => deviceRow(device, 'target')).join('')}`, 'recipients');
+      }
+
+      function openReceive() {
+        const state = states[activeVariant];
+        openDialog('接收文件', `<div class="receive-device">${icon('smartphone')}<span class="row-text"><strong>${escapeHtml(state.deviceName)}</strong><small>${state.discoverable ? '附近设备可发现' : '附近发现已关闭'}</small></span></div><form id="receive-form"><label class="field">分享票据<input name="ticket" placeholder="粘贴分享票据" autocomplete="off" required aria-describedby="ticket-error"></label><p class="error" id="ticket-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-action="receive-example">示例票据</button><button type="submit" class="primary">查看文件</button></div></form>`, 'receive');
+      }
+
+      function previewReceive() {
+        openDialog('来自 我的 MacBook', `<p>2 个文件 · 11.2 MB</p>${files.slice(0, 2).map((file) => `<div class="dialog-file"><img src="${photo(file)}" alt=""><span class="row-text"><strong>${file.name}</strong><small>${file.size} MB</small></span></div>`).join('')}<p style="margin-top:16px">保存到 ${escapeHtml(states[activeVariant].destination)}</p><div class="dialog-actions"><button class="secondary" data-action="close">拒绝</button><button class="primary" data-action="accept">接收</button></div>`, 'receive-preview');
+      }
+
+      function openThread(deviceId) {
+        const device = devices.find((entry) => entry.id === deviceId);
+        states[activeVariant].target = deviceId;
+        const recent = states[activeVariant].history.filter((entry) => entry.target === device.name).map((entry) => `<div class="message"><small>刚刚 · ${entry.status}</small><p>${entry.count} 个文件 · ${entry.size} MB</p></div>`).join('');
+        openDialog(device.name, `<p class="online">在线 · ${device.platform}</p><div class="conversation-date">今天</div><div class="message"><small>09:41 · 收到</small><p>项目素材.zip</p><small>86.2 MB · 已保存</small></div><div class="message"><small>10:24 · 已发送</small><div class="transfer-preview">${files.slice(0, 3).map((file) => `<img src="${photo(file)}" alt="${file.name}">`).join('')}</div><small>3 张照片 · 14.4 MB</small></div>${recent}<div class="dialog-actions"><button class="primary" data-action="pick-thread">${icon('plus')}发送文件</button></div>`, 'thread');
+      }
+
+      function updateProgress() {
+        const transfer = states[activeVariant].transfer;
+        if (!transfer || !dialog.open || dialogMode !== 'progress') { return; }
+        const done = transfer.progress >= 100;
+        dialog.querySelector('#dialog-title').textContent = done ? '传输完成' : '正在传输';
+        dialog.querySelector('.progress-number').textContent = `${transfer.progress}%`;
+        dialog.querySelector('progress').value = transfer.progress;
+        dialog.querySelector('.progress-details').innerHTML = `<span>${done ? '已完成' : '设备间传输'}</span><span>${transfer.size} MB</span>`;
+        const actions = dialog.querySelector('.dialog-actions');
+        if (done && !actions.querySelector('[data-action="done"]')) {
+          actions.innerHTML = '<button class="primary" data-action="done">完成</button>';
+        }
+      }
+
+      function finishTransfer(variant) {
+        const state = states[variant];
+        const transfer = state.transfer;
+        clearInterval(transfer.timer);
+        state.history.unshift({ target: transfer.target, size: transfer.size, count: transfer.count, direction: transfer.direction, status: '已完成' });
+        render(variant);
+      }
+
+      function openProgress() {
+        const transfer = states[activeVariant].transfer;
+        if (!transfer) { return; }
+        openDialog('正在传输', `<div class="transfer-icon">${icon('arrow-left-right')}</div><p>${transfer.direction === 'receive' ? '来自' : '发给'} ${transfer.target} · ${transfer.count} 项</p><div class="progress-number" aria-live="off">${transfer.progress}%</div><progress max="100" value="${transfer.progress}" aria-label="传输进度"></progress><div class="progress-details"></div><div class="dialog-actions"><button class="secondary" data-action="cancel-transfer">取消传输</button><button class="primary" data-action="close">后台传输</button></div>`, 'progress');
+        updateProgress();
+      }
+
+      function startTransfer(direction = 'send') {
+        const variant = activeVariant;
+        const state = states[variant];
+        if (state.transfer && state.transfer.progress < 100) { openProgress(); return; }
+        const target = devices.find((device) => device.id === state.target) || devices[0];
+        state.transfer = { progress: 0, direction, target: target.name, count: state.selected.size, size: totalSize(state), timer: null };
+        openProgress();
+        render(variant);
+        state.transfer.timer = setInterval(() => {
+          state.transfer.progress = Math.min(100, state.transfer.progress + 17);
+          const percent = document.querySelector(`#phone-${variant} .task-percent`);
+          if (percent) { percent.textContent = `${state.transfer.progress}%`; }
+          if (state.transfer.progress >= 100) { finishTransfer(variant); }
+          if (activeVariant === variant) { updateProgress(); }
+        }, 650);
+        updateProgress();
+      }
+
+      function toggleSelection(state, fileId) {
+        if (state.selected.has(fileId)) { state.selected.delete(fileId); } else { state.selected.add(fileId); }
+      }
+
+      const actions = {
+        nav: (button, state) => { state.page = button.dataset.page; render(activeVariant); },
+        settings: (button, state) => { state.page = 'settings'; render(activeVariant); },
+        category: (button, state) => { state.category = button.dataset.category; render(activeVariant); },
+        select: (button, state) => { toggleSelection(state, button.dataset.file); render(activeVariant); },
+        device: (button, state) => { state.target = button.dataset.device; openPicker(); },
+        pick: (button, state) => { state.target = null; openPicker(); },
+        'pick-thread': () => openPicker(),
+        recipients: () => openRecipients(),
+        'recipients-new': (button, state) => { state.target = null; state.selected.clear(); openRecipients(); },
+        target: (button, state) => { state.target = button.dataset.device; if (state.selected.size) { startTransfer(); } else { openPicker(); } },
+        'picker-next': (button, state) => { if (state.target) { startTransfer(); } else { openRecipients(); } },
+        receive: () => openReceive(),
+        'receive-example': () => { dialog.querySelector('[name="ticket"]').value = 'dashbeam-demo-ticket'; dialog.querySelector('[name="ticket"]').removeAttribute('aria-invalid'); dialog.querySelector('#ticket-error').textContent = ''; },
+        accept: (button, state) => { state.target = 'mac'; state.selected = new Set(['sea', 'mountain']); startTransfer('receive'); },
+        thread: (button) => openThread(button.dataset.device),
+        close: () => closeDialog(),
+        resume: () => openProgress(),
+        done: (button, state) => { closeDialog(); state.selected.clear(); state.transfer = null; state.page = 'history'; render(activeVariant); },
+        'cancel-transfer': (button, state) => {
+          const transfer = state.transfer;
+          clearInterval(transfer.timer);
+          state.history.unshift({ ...transfer, status: '已取消' });
+          state.transfer = null;
+          closeDialog();
+          state.page = 'history';
+          render(activeVariant);
+        },
+      };
+
+      document.addEventListener('click', (event) => {
+        const viewButton = event.target.closest('button[data-view]');
+        if (viewButton) {
+          document.body.dataset.view = viewButton.dataset.view;
+          document.querySelectorAll('button[data-view]').forEach((button) => button.setAttribute('aria-pressed', String(button === viewButton)));
+          return;
+        }
+        const button = event.target.closest('button[data-action]');
+        if (!button || button.disabled) { return; }
+        const phone = button.closest('.phone');
+        if (phone) { activeVariant = phone.id.replace('phone-', ''); }
+        actions[button.dataset.action]?.(button, states[activeVariant]);
+      });
+
+      document.addEventListener('change', (event) => {
+        const input = event.target;
+        if (input.dataset.pick) {
+          const state = states[activeVariant];
+          toggleSelection(state, input.dataset.pick);
+          const next = dialog.querySelector('[data-action="picker-next"]');
+          next.disabled = state.selected.size === 0;
+          next.textContent = `${state.target ? '发送' : '下一步'} · ${state.selected.size} 项`;
+          render(activeVariant);
+        }
+        if (input.dataset.setting) {
+          const variant = input.closest('.phone').id.replace('phone-', '');
+          const value = input.type === 'checkbox' ? input.checked : input.value.trim();
+          states[variant][input.dataset.setting] = value || (input.dataset.setting === 'deviceName' ? 'Mate 80 Pro' : value);
+        }
+      });
+
+      dialog.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeDialog();
+        }
+      });
+      dialog.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (dialog.querySelector('[name="ticket"]').value.trim() !== 'dashbeam-demo-ticket') {
+          dialog.querySelector('#ticket-error').textContent = '票据无效。此原型可使用示例票据。';
+          dialog.querySelector('[name="ticket"]').setAttribute('aria-invalid', 'true');
+          positionDialog();
+          return;
+        }
+        previewReceive();
+      });
+      window.addEventListener('resize', () => { if (dialog.open) { positionDialog(); } });
+      ['a', 'b', 'c'].forEach(render);
+    })();
+  </script>
+</body>
+</html>
